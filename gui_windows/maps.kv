@@ -1,0 +1,60 @@
+#:kivy 1.0.9
+
+<InterfaceManager>:
+    orientation: "vertical"
+    screen_area: screen
+
+    Label:
+        font_size: 20
+        text: "MaPS 2.0"
+        size_hint: 1, 0.08
+        bold: True
+
+    Label:
+        font_size: 15
+        text: "Input parameters"
+        size_hint: 1, 0.06
+
+    BoxLayout:
+        id: screen
+
+    StackLayout:
+        orientation: "rl-bt"
+        # spacing: 5, 5
+        size_hint: 1, 0.06
+
+        Button:
+            id: r_button
+            text: "Next"
+            size_hint: 0.2, 1
+            on_press: root.load_next_screen()
+
+        Button:
+            id: l_button
+            text: "Previous"
+            size_hint: 0.2, 1
+            on_press: root.load_previous_screen()
+
+<InputWidget>:
+    orientation: "vertical"
+
+    GridLayout:
+        cols: 2
+
+        BoxLayout:
+            Label:
+                font_size: 10
+                text: "ABC"
+
+            TextInput:
+                id: abc
+                text: ""
+
+        BoxLayout:
+            Label:
+                font_size: 10
+                text: "DEF"
+
+            Button:
+                id: def
+                text: ""
