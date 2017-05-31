@@ -24,16 +24,19 @@ import cv2
 import threading
 
 
+error_message = ''
+
+
 class InterfaceManager(BoxLayout):
     screen_area = ObjectProperty()
 
     scr1_btn = ObjectProperty()
     scr2_btn = ObjectProperty()
     scr3_btn = ObjectProperty()
-    # scr4_btn = ObjectProperty()
-    # scr5_btn = ObjectProperty()
-    # scr6_btn = ObjectProperty()
-    # scr7_btn = ObjectProperty()
+    scr4_btn = ObjectProperty()
+    scr5_btn = ObjectProperty()
+    scr6_btn = ObjectProperty()
+    scr7_btn = ObjectProperty()
 
     prev_btn = ObjectProperty()
     next_btn = ObjectProperty()
@@ -54,6 +57,13 @@ class InterfaceManager(BoxLayout):
         self.current_view = 0
         self.screen_area.add_widget(self.view_order[self.current_view])
         # self.progress_bar.value_normalized = float(self.current_view) / len(self.view_order)
+        popup_content = BoxLayout(orientation='vertical')
+        self.error_content = Label(text=error_message)
+        popup_content.add_widget(self.error_content)
+        cls_btn = Button(text='Close', size_hint=(1.0, 0.1))
+        popup_content.add_widget(cls_btn)
+        self.error_popup = Popup(title='Error', content=popup_content, size_hint=(0.6, 0.6))
+        cls_btn.bind(on_release=self.error_popup.dismiss)
 
     #     self.add_widget(self.InputParametersView)
 
@@ -68,11 +78,16 @@ class InterfaceManager(BoxLayout):
             # self.progress_bar.value_normalized = float(self.current_view) / len(self.view_order)
 
     def load_screen(self, view_id):
+        global error_message
+        error_message = ''
         if view_id >= 1 and (not all([self.view_order[temp_id].validate_step() for temp_id in range(view_id)])):
             try:
-                self.view_order[self.current_view].error_popup.open()
+                self.error_content.text = error_message
+                self.error_popup.open()
             except:
-                print 'No error message set for view %s' % (repr(self.view_order[self.current_view]))
+                self.error_content.text = 'Unknown error. Please view error logs'
+                self.error_popup.open()
+                # print 'No error message set for view %s' % (repr(self.view_order[self.current_view]))
         elif view_id >= len(self.view_order):
             pass
         else:
@@ -103,6 +118,9 @@ class InterfaceManager(BoxLayout):
         else:
             self.prev_btn.disabled = False
 
+    def reload_settings(self):
+        print 'reloading settings'
+
 
 class InputParametersView(BoxLayout):
     parameters = json.load(open('maps/default_inputs.json'))
@@ -112,17 +130,15 @@ class InputParametersView(BoxLayout):
         super(InputParametersView, self).__init__(**kwargs)
         self.screen.add_widget(Label(text="testing"))
 
-        popup_content = BoxLayout(orientation='vertical')
-        popup_content.add_widget(Label(text='Please fix the errors in the data entered'))
-        cls_btn = Button(text='Close', size_hint=(1.0, 0.1))
-        popup_content.add_widget(cls_btn)
-        self.error_popup = Popup(title='Errors', content=popup_content, size_hint=(0.6, 0.6))
-        cls_btn.bind(on_release=self.error_popup.dismiss)
+        self.setting_list = {}
+
+    def create_setting_layout(self, varname, type, helptext=None, default_val=None):
+        pass
 
     def validate_step(self):
+        global error_message
+        error_message = 'Error in data entered. Please check entered data'
         return True
-#     def generate_(self, arg):
-#         pass
 
 
 class FrameDisplay(Image):
@@ -133,12 +149,8 @@ class FrameDisplay(Image):
         self.path_list = glob.glob(path)[:self.frame_count]
         self.selection_window = [0, 0]
         self.img_seq = load_image_sequence(self.path_list)
-        # print self.path_list
-        # self.img = load_image_sequence(path_list[0])[0]
 
     def update(self, dt):
-        # print self.path_list[0]
-        # print img_seq[0]
         frame = create_image_overlay(self.img_seq[int(self.parent.parent.img_select)])
         frame = cv2.flip(frame, 0)
         buf = frame.tostring()
@@ -146,6 +158,7 @@ class FrameDisplay(Image):
             size=(frame.shape[1], frame.shape[0]), colorfmt='bgr')
         image_texture.blit_buffer(buf, colorfmt='bgr', bufferfmt='ubyte')
         self.texture = image_texture
+        # TODO: Draw rectangle from self.parent.selected_region here
 
 
 class FrameSelectionView(BoxLayout):
@@ -175,42 +188,15 @@ class FrameSelectionView(BoxLayout):
         print 'Region:', self.selected_region
 
     def on_img_select(self, instance, value):
-        # Change in value of slider
         # Disabling the region selection button till frame is finalized
         self.region_select.disabled = True
-        # TODO: Should the old values immediately be discarded
-        # self.selected_frame = None
-        # self.selected_region = None
-
-    # def on_touch_down(self, touch):
-    #     if self.collide_point(*touch.pos):
-    #         print 'box touch down detected'
-    #         touch.push()
-    #         touch.apply_transform_2d(self.to_local)
-    #         super(FrameSelectionView, self).on_touch_down(touch)
-    #         touch.pop()
-    #
-    # def on_touch_up(self, touch):
-    #     if self.collide_point(*touch.pos):
-    #         print 'box touch up detected'
-    #         touch.push()
-    #         touch.apply_transform_2d(self.to_local)
-    #         super(FrameSelectionView, self).on_touch_up(touch)
-    #         touch.pop()
-    #
-    # def on_touch_move(self, touch):
-    #     if self.collide_point(*touch.pos):
-    #         print 'box touch move detected'
-    #         touch.push()
-    #         touch.apply_transform_2d(self.to_local)
-    #         super(FrameSelectionView, self).on_touch_move(touch)
-    #         touch.pop()
 
     def validate_step(self):
+        global error_message
         if self.selected_frame is None or self.selected_region is None:
+            error_message = 'Please select a frame and a region within the frame'
             return False
         return True
-
 
 
 class ZookPruningView(BoxLayout):

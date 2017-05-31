@@ -112,6 +112,7 @@
     screen: screen_area
 
     orientation: "vertical"
+    padding: 3
 
     Label:
         font_size: 15
@@ -120,28 +121,13 @@
 
     StackLayout:
         id: screen_area
+        size_hint: 1, 1
 
-        BoxLayout:
-            size_hint: 1, 0.08
-
-            Label:
-                font_size: 10
-                text: root.parameters[0]["varname"]
-
-            TextInput:
-                id: abc
-                text: ""
-
-        BoxLayout:
-            size_hint: 1, 0.08
-
-            Label:
-                font_size: 10
-                text: "DEF"
-
-            Button:
-                id: def
-                text: ""
+    Button:
+        id: reload_button
+        size_hint: 1, 0.06
+        text: "Reload all settings"
+        on_press: root.parent.reload_settings()
     # Label:
     #     text: ""
 
