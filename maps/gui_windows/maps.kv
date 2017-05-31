@@ -1,0 +1,208 @@
+#:kivy 1.0.9
+
+# Main interface window
+<InterfaceManager>:
+
+    orientation: "vertical"
+    padding: 5
+    screen_area: screen
+    scr1_btn: scr1
+    scr2_btn: scr2
+    scr3_btn: scr3
+    scr4_btn: scr4
+    scr5_btn: scr5
+    scr6_btn: scr6
+    scr7_btn: scr7
+    prev_btn: l_button
+    next_btn: r_button
+    # progress_bar: progress
+
+    # Title label
+    Label:
+        font_size: 20
+        text: "MaPS 2.0"
+        size_hint: 1, 0.06
+        bold: True
+
+    # Main area of screen where widgets are swapped out
+    BoxLayout:
+        id: screen
+        size_hint: 1, 1
+
+    # Bottom button bar
+    BoxLayout:
+        size_hint: 1, 0.04
+
+        StackLayout:
+            # Buttons to go to steps
+            orientation: 'lr-bt'
+            size_hint: 0.6, 1
+
+            Button:
+                id: scr1
+                text: "1"
+                color: 0.3, 0.6, 1, 1
+                size_hint: 0.14, 1
+                disabled: False
+                on_release: root.load_screen(0)
+
+            Button:
+                id: scr2
+                text: "2"
+                size_hint: 0.14, 1
+                disabled: True
+                on_release: root.load_screen(1)
+
+            Button:
+                id: scr3
+                text: "3"
+                size_hint: 0.14, 1
+                disabled: True
+                on_release: root.load_screen(2)
+
+            Button:
+                id: scr4
+                text: "4"
+                size_hint: 0.14, 1
+                disabled: True
+                on_release: root.load_screen(3)
+
+            Button:
+                id: scr5
+                text: "5"
+                size_hint: 0.14, 1
+                disabled: True
+                on_release: root.load_screen(4)
+
+            Button:
+                id: scr6
+                text: "6"
+                size_hint: 0.14, 1
+                disabled: True
+                on_release: root.load_screen(5)
+
+            Button:
+                id: scr7
+                text: "7"
+                size_hint: 0.14, 1
+                disabled: True
+                on_release: root.load_screen(6)
+
+        StackLayout:
+            # Next and previous buttons
+            orientation: "rl-bt"
+            # spacing: 5, 5
+            size_hint: 0.4, 1
+
+            Button:
+                id: r_button
+                text: "Next"
+                size_hint: 0.2, 1
+                on_release: root.load_next_screen()
+
+            Button:
+                id: l_button
+                text: "Previous"
+                disabled: True
+                size_hint: 0.2, 1
+                on_release: root.load_previous_screen()
+
+# Widget to enter operational parameters of
+<InputParametersView>:
+    screen: screen_area
+
+    orientation: "vertical"
+
+    Label:
+        font_size: 15
+        text: "Input parameters"
+        size_hint: 1, 0.06
+
+    StackLayout:
+        id: screen_area
+
+        BoxLayout:
+            size_hint: 1, 0.08
+
+            Label:
+                font_size: 10
+                text: root.parameters[0]["varname"]
+
+            TextInput:
+                id: abc
+                text: ""
+
+        BoxLayout:
+            size_hint: 1, 0.08
+
+            Label:
+                font_size: 10
+                text: "DEF"
+
+            Button:
+                id: def
+                text: ""
+    # Label:
+    #     text: ""
+
+# Widget to select frame with largest heart size and select bounding region
+<FrameSelectionView>:
+    img_frame: frame
+    slider: slider
+    img_select: slider.value
+    frame_select: frame_select
+    region_select: region_select
+
+    orientation: "vertical"
+    padding: 0
+    Label:
+        font_size: 15
+        text: "Select static region"
+        size_hint: 1, 0.06
+
+    BoxLayout:
+        # size_hint: 1, 0.06
+
+        FrameDisplay:
+            id: frame
+            size_hint: 1, 1
+
+        Label:
+            id: help_text
+            text: "Drag the slider to move between the frames. Press select frame to open the region selection window. Press select region to mark the coordinates of the selected region"
+            valign: "bottom"
+            size_hint: 0.4, 1
+            text_size: self.width, None
+            height: self.texture_size[1]
+
+    BoxLayout:
+        size_hint: 1, 0.05
+
+        Slider:
+            id: slider
+            min: 0
+            max: frame.frame_count - 1
+
+        Button:
+            id: frame_select
+            text: "SELECT FRAME"
+            size_hint: 0.25, 1
+            on_release: root.mark_frame()
+
+        Button:
+            id: region_select
+            text: "SELECT REGION"
+            disabled: True
+            size_hint: 0.25, 1
+            on_release: root.mark_region()
+
+<ZookPruningView>:
+    orientation: "vertical"
+
+    Label:
+        font_size: 15
+        text: "Prune bad zooks"
+        size_hint: 1, 0.06
+
+# <FrameDisplay>:
+#
