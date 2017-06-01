@@ -3,96 +3,84 @@
     "varname": "km_path",
     "description": "Kymograph folder location",
     "helptext": "",
-    "default_val": "",
-    "type": "path",
-    "group": ""
+    "value": "",
+    "type": "path"
   },
   {
     "varname": "bf_path",
     "description": "Phase frames folder",
     "helptext": "",
-    "default_val": "",
-    "type": "path",
-    "group": ""
+    "value": "",
+    "type": "path"
   },
   {
     "varname": "bf_fps",
     "description": "Phase FPS",
     "helptext": "",
-    "default_val": 0,
-    "type": "int",
-    "group": ""
+    "value": 0,
+    "type": "int"
   },
   {
     "varname": "bf_res",
     "description": "Phase resolution",
     "helptext": "",
-    "default_val": 0.6296,
-    "type": "float",
-    "group": ""
+    "value": 0.6296,
+    "type": "float"
   },
   {
     "varname": "fm_path",
     "description": "Fluorescent frames folder",
     "helptext": "",
-    "default_val": "",
-    "type": "path",
-    "group": ""
+    "value": "",
+    "type": "path"
   },
   {
     "varname": "fm_fps",
     "description": "Fluorescent FPS",
     "helptext": "",
-    "default_val": 0,
-    "type": "int",
-    "group": ""
+    "value": 0,
+    "type": "int"
   },
   {
     "varname": "fphb",
     "description": "Approximate Frames per heartbeat",
     "helptext": "",
-    "default_val": 20,
-    "type": "int",
-    "group": ""
+    "value": 20,
+    "type": "int"
   },
   {
     "varname": "fpz",
     "description": "Frames per zook",
     "helptext": "",
-    "default_val": 192,
-    "type": "int",
-    "group": ""
+    "value": 192,
+    "type": "int"
   },
   {
     "varname": "rf",
     "description": "Resampling factor",
     "helptext": "",
-    "default_val": 5,
-    "type": "int",
-    "group": ""
+    "value": 5,
+    "type": "int"
   },
   {
     "varname": "pre_disc_zook",
     "description": "Initial zooks discarded",
     "helptext": "",
-    "default_val": 7,
-    "type": "int",
-    "group": ""
+    "value": 7,
+    "type": "int"
   },
   {
     "varname": "post_disc_zook",
     "description": "Final zooks discarded",
     "helptext": "",
-    "default_val": 3,
-    "type": "int",
-    "group": ""
+    "value": 3,
+    "type": "int"
   },
   {
     "varname": "init_frames_disc",
     "description": "Initial intrazook frames discarded",
     "helptext": "",
-    "default_val": 2,
-    "type": "int",
-    "group": ""
+    "value": 2,
+    "type": "int"
   }
 ]
