@@ -190,6 +190,41 @@
         text: "Prune bad zooks"
         size_hint: 1, 0.06
 
+
 # Widget declarations
 # <FrameDisplay>:
 #
+<LoadDialog>:
+    BoxLayout:
+        size: root.size
+        pos: root.pos
+        orientation: "vertical"
+
+        FileChooserListView:
+            id: filechooser
+            dirselect: True
+
+        BoxLayout:
+            size_hint_y: None
+            height: 30
+
+            Button:
+                text: "Cancel"
+                on_release: root.cancel()
+
+            Button:
+                text: "Load"
+                on_release: root.load(filechooser.path, filechooser.selection)
+
+<FileChooserWidget>:
+    file_field: path
+    text: path.text
+
+    TextInput:
+        id: path
+        size_hint: 0.9, 1
+        readonly: True
+
+    Button:
+        size_hint: 0.1, 1
+        on_release: root.show_load()
