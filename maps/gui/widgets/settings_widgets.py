@@ -3,7 +3,7 @@ from kivy.uix.floatlayout import FloatLayout
 from kivy.uix.button import Button
 from kivy.uix.textinput import TextInput
 from kivy.uix.popup import Popup
-from kivy.properties import ObjectProperty
+from kivy.properties import ObjectProperty, BooleanProperty
 
 
 class SettingRow(BoxLayout):
@@ -16,17 +16,18 @@ class SettingRow(BoxLayout):
 class LoadDialog(FloatLayout):
     load = ObjectProperty(None)
     cancel = ObjectProperty(None)
-
+    dirselect = BooleanProperty(False)
 
 class FileChooserWidget(BoxLayout):
     text = ObjectProperty(None)
     file_field = ObjectProperty(None)
+    dirselect = BooleanProperty(False)
 
     def dismiss_popup(self):
         self._popup.dismiss()
 
     def show_load(self):
-        content = LoadDialog(load=self.load, cancel=self.dismiss_popup)
+        content = LoadDialog(load=self.load, cancel=self.dismiss_popup, dirselect=self.dirselect)
         self._popup = Popup(title="Load file", content=content,
                             size_hint=(0.9, 0.9))
         self._popup.open()

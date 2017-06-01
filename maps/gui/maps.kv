@@ -123,11 +123,22 @@
         id: screen_area
         size_hint: 1, 1
 
-    Button:
-        id: reload_button
+    BoxLayout:
         size_hint: 1, 0.06
-        text: "Reload all settings"
-        on_press: root.parent.reload_settings()
+
+        Button:
+            id: load_json
+            text: "Load data from json file"
+            on_release: root.json_load_popup()
+
+        Label:
+            size_hint: 1.5, 1
+
+        Button:
+            id: reload_button
+            text: "Reload all settings"
+            on_release: root.reload_settings()
+
     # Label:
     #     text: ""
 
@@ -202,7 +213,8 @@
 
         FileChooserListView:
             id: filechooser
-            dirselect: True
+            dirselect: root.dirselect
+            path: 'maps/..'
 
         BoxLayout:
             size_hint_y: None
@@ -227,4 +239,5 @@
 
     Button:
         size_hint: 0.1, 1
+        text: '...'
         on_release: root.show_load()

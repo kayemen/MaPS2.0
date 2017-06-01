@@ -1,6 +1,6 @@
 from kivy.app import App
 from kivy.uix.widget import Widget
-from kivy.properties import ObjectProperty, NumericProperty
+from kivy.properties import ObjectProperty, NumericProperty, StringProperty
 from kivy.uix.button import Button
 from kivy.uix.boxlayout import BoxLayout
 from kivy.uix.label import Label
@@ -16,13 +16,16 @@ from kivy.uix.image import Image
 
 # from ..gui_modules import load_image_sequence, create_image_overlay
 from maps.helpers.gui_modules import load_image_sequence, create_image_overlay, rectangular_select, max_heartsize_frame, get_rect_params
+from maps.gui.widgets.image_display import FrameDisplay
+from maps.gui.widgets.settings_widgets import FileChooserWidget, SettingRow
 
 import json
 import os
 import glob
 import cv2
 import threading
-
+import traceback
+import pprint
 
 error_message = ''
 
@@ -118,22 +121,86 @@ class InterfaceManager(BoxLayout):
         else:
             self.prev_btn.disabled = False
 
-    def reload_settings(self):
+    def reload_settings(self, new_parameters):
         print 'reloading settings'
 
 
 class InputParametersView(BoxLayout):
-    parameters = json.load(open('maps/default_inputs.json'))
+    # parameters = json.load(open('maps/default_inputs.json'))
+    parameters = ObjectProperty()
+    json_path = StringProperty('maps/default_inputs.json')
     screen = ObjectProperty()
 
     def __init__(self, **kwargs):
         super(InputParametersView, self).__init__(**kwargs)
-        self.screen.add_widget(Label(text="testing"))
 
-        self.setting_list = {}
+        self.load_settings_json()
 
-    def create_setting_layout(self, varname, type, helptext=None, default_val=None):
-        pass
+    def load_settings_json(self):
+        try:
+            self.parameters = json.load(open(self.json_path))
+            # pprint.pprint(self.parameters, width=1)
+            self.screen.clear_widgets()
+            self.setting_list = {}
+            self.load_setting_widgets()
+        except:
+            print 'Unable to load json file'
+            traceback.print_exc()
+
+    def json_load_popup(self):
+
+        def get_json_path(instance):
+            self.json_path = self.json_pop.content.children[1].text
+            try:
+                self.load_settings_json()
+                return False
+            except:
+                return True
+
+        pop_content = BoxLayout(orientation='vertical')
+        pop_content.add_widget(FileChooserWidget(dirselect=False))
+
+        self.json_pop = Popup(title="Load new settings from json file", content=pop_content, size_hint=(0.5, 0.2))
+        pop_content.add_widget(Button(text='OK', on_release=self.json_pop.dismiss))
+        self.json_pop.bind(on_dismiss=get_json_path)
+        self.json_pop.open()
+
+    def load_setting_widgets(self):
+        for setting_obj in self.parameters:
+            self.setting_list[setting_obj['varname']] = self.create_setting_layout(**setting_obj)
+            self.screen.add_widget(self.setting_list[setting_obj['varname']])
+
+    def create_setting_layout(self, varname, description, type, helptext=None, value=None):
+        setting_layout = SettingRow(size_hint=(1, 0.06))
+        setting_layout.add_widget(Label(text=description, size_hint_x=0.4))
+        if type == 'path':
+            setting_layout.add_widget(FileChooserWidget(size_hint_x=0.6, dirselect=True))
+        elif type == 'file':
+            setting_layout.add_widget(FileChooserWidget(size_hint_x=0.6, dirselect=False))
+        elif type == 'int' or type == 'float':
+            setting_layout.add_widget(TextInput(text=str(value), size_hint_x=0.6))
+
+        return setting_layout
+
+    def dump_new_settings(self):
+        # lambda function to return {} object from inside [] of parameters having field 'varname' as varname
+        get_param_obj = lambda varname: self.parameters[[var['varname'] for var in self.parameters].index(varname)]
+
+        for varname in self.setting_list.keys():
+            obj = get_param_obj(varname)
+            new_val = self.setting_list[varname].get_setting_value()
+            obj['value'] = new_val
+
+        # pprint.pprint(self.parameters, width=1)
+        json.dump(self.parameters, open(self.json_path, 'w'))
+
+    def reload_settings(self):
+        print self.setting_list
+        # print self.setting_list['km_path'].get_setting_value()
+        # print dir(self.setting_list['km_path'])
+        print 'creating new settings'
+        new_settings = self.dump_new_settings()
+        self.parent.parent.reload_settings(new_settings)
 
     def validate_step(self):
         global error_message
