@@ -30,12 +30,12 @@ def compute_raw_zstage(kymo_array, match_value=255):
         kymo_array: numpy array of kymgraph pixel values
         match_value: value to find the rightmost of
     OUTPUTS:
-        raw_z_stage: array of distances of rightmost pixel from edge
+        z_stage: array of distances of rightmost pixel from edge
     '''
-    raw_z_stage = np.asarray([])
+    z_stage = np.asarray([])
 
-    raw_z_stage = np.zeros(kymo_array.shape[0])
-    for frame_no in xrange(len(raw_z_stage)):
+    z_stage = np.zeros(kymo_array.shape[0])
+    for frame_no in xrange(len(z_stage)):
         frame_row = kymo_array[frame_no, :].astype(int)
         # Taking first order difference of row
         diff_row = frame_row[:-1] - frame_row[1:]
@@ -43,8 +43,8 @@ def compute_raw_zstage(kymo_array, match_value=255):
         matching_pixels = np.asarray(np.where(np.absolute(diff_row) == match_value))
         # Older approach. Finding extremum position of pixel of match_value
         # matching_pixels = np.asarray(np.where(frame_row == 0))
-        raw_z_stage[frame_no] = matching_pixels[0, -1]
-    return raw_z_stage
+        z_stage[frame_no] = matching_pixels[0, -1]
+    return z_stage
 
 
 def generate_zstage_plot(z_stage, **params):
@@ -54,38 +54,38 @@ def generate_zstage_plot(z_stage, **params):
     pass
 
 
-def compute_maxima_minima(raw_z_stage, maxima_threshold=10):
+def compute_maxima_minima(z_stage, maxima_threshold=10):
     '''
-    Find the maxima and minima points in the raw_z_stage data.
+    Find the maxima and minima points in the z_stage data.
     From one minima to the next maxima is a zook. From a minima to the next maxima is a zik
     INPUTS:
-        raw_z_stage: array of distances of rightmost pixel from edge
+        z_stage: array of distances of rightmost pixel from edge
         maxima_threshold: Threshold difference above which value is considered maxima
     OUTPUTS:
-        maxima_points: index of points at which maxima occur in raw_z_stage
+        maxima_points: index of points at which maxima occur in z_stage
         maxima_values: actual values of maxima
-        minima_points: index of points at which minima occur in raw_z_stage
+        minima_points: index of points at which minima occur in z_stage
         minima_values: actual values of minima
     '''
-    maxima_points = np.where((raw_z_stage[1:] - raw_z_stage[:-1]) < -maxima_threshold)[0].flatten()
-    maxima_values = raw_z_stage[maxima_points]
+    maxima_points = np.where((z_stage[1:] - z_stage[:-1]) < -maxima_threshold)[0].flatten()
+    maxima_values = z_stage[maxima_points]
 
     # # TODO: TEST Include the last zook and test if it breaks anything
     # # Maxima in last zook. Uncomment after testing
-    # np.append(maxima_values, raw_z_stage[-1])
+    # np.append(maxima_values, z_stage[-1])
 
     first_minima = 0  # setting#
     minima_points = np.asarray(first_minima)
     for i in xrange(len(maxima_points) - 1):
-        new_minimas = np.argmin(raw_z_stage[maxima_points[i]: maxima_points[i + 1]])
+        new_minimas = np.argmin(z_stage[maxima_points[i]: maxima_points[i + 1]])
         minima_points = np.append(minima_points, maxima_points[i] + new_minimas)
 
     # # TODO: TEST Include the last zook and test if it breaks anything
     # # Minima in last zook. Uncomment if needed
-    # new_minimas = np.argmin(raw_z_stage[maxima_points[-1]:])
+    # new_minimas = np.argmin(z_stage[maxima_points[-1]:])
     # minima_points = np.append(minima_points, maxima_points[-1] + new_minimas)
 
-    minima_values = raw_z_stage[minima_points]
+    minima_values = z_stage[minima_points]
 
     return (maxima_points, maxima_values, minima_points, minima_values)
 
@@ -94,8 +94,8 @@ def compute_zookzik_stats(maxima_points, minima_points):
     '''
     Find the statistics of zook and zik. See list of outputs to see exact stats computed
     INPUTS:
-        maxima_points: index of points at which maxima occur in raw_z_stage
-        minima_points: index of points at which minima occur in raw_z_stage
+        maxima_points: index of points at which maxima occur in z_stage
+        minima_points: index of points at which minima occur in z_stage
     OUTPUTS:
         zz_stats: Dictionary containing:-
             zook_lengths: Length of each zook. Distance from maxima to next minima
@@ -131,15 +131,15 @@ def generate_zookzik_stat_plots(arg):
     pass
 
 
-def compute_zstamp(raw_z_stage, maxima_points, minima_points):
+def compute_zstamp(z_stage, maxima_points, minima_points):
     '''
     Remove the constant bias in z_stage values. Pull down/up to get rid of any constant shift terms
     INPUTS:
-        raw_z_stage: array of distances of rightmost pixel from edge
-        maxima_points: index of points at which maxima occur in raw_z_stage
-        minima_points: index of points at which minima occur in raw_z_stage
+        z_stage: array of distances of rightmost pixel from edge
+        maxima_points: index of points at which maxima occur in z_stage
+        minima_points: index of points at which minima occur in z_stage
     OUTPUTS:
-        z_stamp: Adjusted values of raw_z_stage
+        z_stamp: Adjusted values of z_stage
         z_stamp_physical: z_stamp_values in physical units instead of frames
     '''
     ignore_startzook = 7  # setting#
@@ -147,28 +147,28 @@ def compute_zstamp(raw_z_stage, maxima_points, minima_points):
     BF_resolution = 0.6296  # setting#
 
     # TODO: TEST Check if transpose is needed
-    z_stamp = np.zeros(raw_z_stage.shape)
+    z_stamp = np.zeros(z_stage.shape)
 
     for i in xrange(len(minima_points)):
         start_slice = minima_points[i] + ignore_startzook
         end_slice = maxima_points[i] - ignore_endzook + 1
         # TODO: Can bias removal happen at end
         z_stamp[start_slice: end_slice] = \
-            raw_z_stage[start_slice: end_slice] - raw_z_stage[0] * np.ones(end_slice - start_slice)
-    # Bias removal. Check if it should be raw_z_stage[0] or raw_z_stage[ignore_startzook]
-    # z_stamp -= np.ones(z_stamp.shape)*raw_z_stage[0]
+            z_stage[start_slice: end_slice] - z_stage[0] * np.ones(end_slice - start_slice)
+    # Bias removal. Check if it should be z_stage[0] or z_stage[ignore_startzook]
+    # z_stamp -= np.ones(z_stamp.shape)*z_stage[0]
 
     z_stamp_physical = z_stamp * BF_resolution
 
     return (z_stamp, z_stamp_physical)
 
 
-def compute_ideal_zstamp(raw_z_stage, maxima_points, minima_points):
+def compute_ideal_zstamp(z_stage, maxima_points, minima_points):
     '''
     Compute the ideal minima and maxima points deterministically. Use this to compensate for quantization errors in actual values
     INPUTS:
-        maxima_points: index of points at which maxima occur in raw_z_stage
-        minima_points: index of points at which minima occur in raw_z_stage
+        maxima_points: index of points at which maxima occur in z_stage
+        minima_points: index of points at which minima occur in z_stage
     OUTPUTS:
         z_stamp_det: deterministic version of z_stamp
     '''
@@ -180,9 +180,9 @@ def compute_ideal_zstamp(raw_z_stage, maxima_points, minima_points):
 
     z_stamp_det = np.zeros(z_stamp.shape)
 
-    pixel_shift_length = stats.mode(raw_z_stage[maxima_points] - raw_z_stage[minima_points])[0]
+    pixel_shift_length = stats.mode(z_stage[maxima_points] - z_stage[minima_points])[0]
 
-    pixel_shift_start = stats.mode(raw_z_stage[minima_points])[0]
+    pixel_shift_start = stats.mode(z_stage[minima_points])[0]
     pixel_shift_per_frame = pixel_shift_length / ZookZikPeriod
 
     # Copied as is. Not used in previous code
