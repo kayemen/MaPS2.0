@@ -7,7 +7,8 @@ import os
 import sys
 
 
-# TODO: Use settings module instead of hard coded values (replace #setting#)
+# TODO: Use settings module instead of hard coded values (replace # setting#)
+# TODO: add logging
 
 
 def load_kymograph(kymo_path):
@@ -69,7 +70,7 @@ def compute_maxima_minima(raw_z_stage, maxima_threshold=10):
     maxima_points = np.where((raw_z_stage[1:] - raw_z_stage[:-1]) < -maxima_threshold)[0].flatten()
     maxima_values = raw_z_stage[maxima_points]
 
-    # # TODO: Include the last zook and test if it breaks anything
+    # # TODO: TEST Include the last zook and test if it breaks anything
     # # Maxima in last zook. Uncomment after testing
     # np.append(maxima_values, raw_z_stage[-1])
 
@@ -79,7 +80,7 @@ def compute_maxima_minima(raw_z_stage, maxima_threshold=10):
         new_minimas = np.argmin(raw_z_stage[maxima_points[i]: maxima_points[i + 1]])
         minima_points = np.append(minima_points, maxima_points[i] + new_minimas)
 
-    # # TODO: Include the last zook and test if it breaks anything
+    # # TODO: TEST Include the last zook and test if it breaks anything
     # # Minima in last zook. Uncomment if needed
     # new_minimas = np.argmin(raw_z_stage[maxima_points[-1]:])
     # minima_points = np.append(minima_points, maxima_points[-1] + new_minimas)
@@ -93,8 +94,8 @@ def compute_zookzik_stats(maxima_points, minima_points):
     '''
     Find the statistics of zook and zik. See list of outputs to see exact stats computed
     INPUTS:
-        maxima_points:
-        minima_points:
+        maxima_points: index of points at which maxima occur in raw_z_stage
+        minima_points: index of points at which minima occur in raw_z_stage
     OUTPUTS:
         zz_stats: Dictionary containing:-
             zook_lengths: Length of each zook. Distance from maxima to next minima
@@ -117,8 +118,9 @@ def compute_zookzik_stats(maxima_points, minima_points):
     zz_stats['zik_length_mode'] = np.round(stats.mode(zz_stats['zik_lengths']))
     zz_stats['zik_length_max'] = np.max(zz_stats['zik_lengths'])
 
-    for key, val in zz_stats.iteritems():
-        print key, ': ', val
+    # TODO: add logging
+    # for key, val in zz_stats.iteritems():
+    #     print key, ': ', val
     return zz_stats
 
 
@@ -133,22 +135,71 @@ def compute_zstamp(raw_z_stage, maxima_points, minima_points):
     '''
     Remove the constant bias in z_stage values. Pull down/up to get rid of any constant shift terms
     INPUTS:
-
+        raw_z_stage: array of distances of rightmost pixel from edge
+        maxima_points: index of points at which maxima occur in raw_z_stage
+        minima_points: index of points at which minima occur in raw_z_stage
     OUTPUTS:
         z_stamp: Adjusted values of raw_z_stage
+        z_stamp_physical: z_stamp_values in physical units instead of frames
     '''
-    pass
+    ignore_startzook = 7  # setting#
+    ignore_endzook = 3  # setting#
+    BF_resolution = 0.6296  # setting#
+
+    # TODO: TEST Check if transpose is needed
+    z_stamp = np.zeros(raw_z_stage.shape)
+
+    for i in xrange(len(minima_points)):
+        start_slice = minima_points[i] + ignore_startzook
+        end_slice = maxima_points[i] - ignore_endzook + 1
+        # TODO: Can bias removal happen at end
+        z_stamp[start_slice: end_slice] = \
+            raw_z_stage[start_slice: end_slice] - raw_z_stage[0] * np.ones(end_slice - start_slice)
+    # Bias removal. Check if it should be raw_z_stage[0] or raw_z_stage[ignore_startzook]
+    # z_stamp -= np.ones(z_stamp.shape)*raw_z_stage[0]
+
+    z_stamp_physical = z_stamp * BF_resolution
+
+    return (z_stamp, z_stamp_physical)
 
 
-def compute_ideal_zstamp(maxima_points, minima_points):
-    pass
+def compute_ideal_zstamp(raw_z_stage, maxima_points, minima_points):
+    '''
+    Compute the ideal minima and maxima points deterministically. Use this to compensate for quantization errors in actual values
+    INPUTS:
+        maxima_points: index of points at which maxima occur in raw_z_stage
+        minima_points: index of points at which minima occur in raw_z_stage
+    OUTPUTS:
+        z_stamp_det: deterministic version of z_stamp
+    '''
+    ZookZikPeriod = 192  # setting#
+    resampling_factor = 5  # setting#
+
+    minima_points_deterministic = np.arange(0, len(minima_points)) * ZookZikPeriod
+    maxima_points_deterministic = minima_points_deterministic + ZookZikPeriod - 1
+
+    z_stamp_det = np.zeros(z_stamp.shape)
+
+    pixel_shift_length = stats.mode(raw_z_stage[maxima_points] - raw_z_stage[minima_points])[0]
+
+    pixel_shift_start = stats.mode(raw_z_stage[minima_points])[0]
+    pixel_shift_per_frame = pixel_shift_length / ZookZikPeriod
+
+    # Copied as is. Not used in previous code
+    # zooklengthadjustment = (np.max(z_stage[maximapoints]-z_stage[minimapoints])-np.min(z_stage[maximapoints]-z_stage[minimapoints])) # always
+    # #check to make sure that the zebrafish bondary doesn't move much between the
+    # #last frame of one zook and first frame of next zook
+
+    for i in xrange(len(minima_points)):
+        z_stamp_det[minima_points_deterministic[i]: maxima_points_deterministic[i] + 1] = np.round(np.arange(0, ZookZikPeriod) * pixel_shift_per_frame) * resampling_factor
+
+    return z_stamp_det
 
 
 if __name__ == '__main__':
     kymo_data = load_kymograph('D:\Scripts\MaPS\Data sets\KM-XZ_0.tif')
-    z_stage_data = compute_raw_zstage(kymo_data[:1010, :])
+    z_stage_data = compute_raw_zstage(kymo_data[:1000, :])
     (maxp, maxv, minp, minv) = compute_maxima_minima(z_stage_data)
-    compute_zookzik_stats(maxp, minp)
-    # plt.figure(250)
-    # plt.imshow(kymo_data, cmap=plt.cm.gray)
-    # plt.hold()
+    # compute_zookzik_stats(maxp, minp)
+    z_stamp, _ = compute_zstamp(z_stage_data, maxp, minp)
+    z_stamp_det = compute_ideal_zstamp(z_stage_data, maxp, minp)
