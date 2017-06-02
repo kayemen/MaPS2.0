@@ -22,8 +22,32 @@ class FrameDisplay(Image):
         frame = create_image_overlay(self.img_seq[int(self.parent.parent.img_select)])
         frame = cv2.flip(frame, 0)
         buf = frame.tostring()
+        # print buf
         image_texture = Texture.create(
             size=(frame.shape[1], frame.shape[0]), colorfmt='bgr')
         image_texture.blit_buffer(buf, colorfmt='bgr', bufferfmt='ubyte')
         self.texture = image_texture
+        # TODO: Draw rectangle from self.parent.selected_region here
+
+
+class PlotDisplay(Image):
+    # plot = ObjectProperty()
+
+    def __init__(self, **kwargs):
+        super(PlotDisplay, self).__init__(**kwargs)
+        # self.plot = get_plot()
+
+    def update(self, dt):
+        pass
+        # from maps.core.z_stamping import get_plot
+        # frame = get_plot()
+        # frame = cv2.flip(frame, 0)
+        # print frame.shape
+        # buf = frame.tostring()
+        # # print buf
+        # image_texture = Texture.create(
+        #     size=(frame.shape[1], frame.shape[0]), colorfmt='rgb')
+        # image_texture.blit_buffer(buf, colorfmt='rgb', bufferfmt='ubyte')
+        # self.texture = image_texture
+        # print 'updateing'
         # TODO: Draw rectangle from self.parent.selected_region here

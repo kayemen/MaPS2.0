@@ -28,6 +28,7 @@ import traceback
 import pprint
 
 error_message = ''
+DEBUG = True
 
 
 class InterfaceManager(BoxLayout):
@@ -122,6 +123,7 @@ class InterfaceManager(BoxLayout):
             self.prev_btn.disabled = False
 
     def reload_settings(self, new_parameters):
+        # TODO
         print 'reloading settings'
 
 
@@ -204,6 +206,7 @@ class InputParametersView(BoxLayout):
 
     def validate_step(self):
         global error_message
+        # TODO
         error_message = 'Error in data entered. Please check entered data'
         return True
 
@@ -240,6 +243,8 @@ class FrameSelectionView(BoxLayout):
 
     def validate_step(self):
         global error_message
+        if DEBUG:
+            return True
         if self.selected_frame is None or self.selected_region is None:
             error_message = 'Please select a frame and a region within the frame'
             return False
@@ -247,6 +252,11 @@ class FrameSelectionView(BoxLayout):
 
 
 class ZookPruningView(BoxLayout):
+    frame = ObjectProperty()
+
+    def __init__(self, fps=0.2, **kwargs):
+        super(ZookPruningView, self).__init__(**kwargs)
+        Clock.schedule_once(self.frame.update, 1.0 / fps)
 
     def validate_step(self):
         return True

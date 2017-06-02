@@ -107,7 +107,7 @@
                 size_hint: 0.2, 1
                 on_release: root.load_previous_screen()
 
-# Widget to enter operational parameters of
+# Widget to enter operational parameters of MaPS
 <InputParametersView>:
     screen: screen_area
 
@@ -193,13 +193,76 @@
             size_hint: 0.25, 1
             on_release: root.mark_region()
 
+# Widget to process kymograph and identify bad zooks
 <ZookPruningView>:
+    frame: frame
+
     orientation: "vertical"
 
     Label:
         font_size: 15
         text: "Prune bad zooks"
         size_hint: 1, 0.06
+
+    BoxLayout:
+        orientation: 'vertical'
+
+        # Top row of buttons
+        BoxLayout:
+            size_hint: 1, 0.06
+
+            # TODO: File loader to go here
+            TextInput:
+                size_hint: 0.3, 1
+                id: fileview_kymo
+                text: "Loading file path here"
+
+            # Process selected file
+            Button:
+                id: load
+                text: "Process"
+                size_hint: None, 1
+
+        # Middle row, tree of bad zooks and plot of zooks
+        BoxLayout:
+            # TreeView
+            TextInput:
+                size_hint: 1, 1
+
+            BoxLayout:
+                orientation: 'vertical'
+                size_hint: 0.3, 1
+                padding: 5
+
+                Label:
+                    size_hint: 1, 0.6
+
+                Button:
+                    id: view
+                    text: "View"
+                    size_hint: None, 0.1
+
+                Button:
+                    id: keep
+                    text: "Keep"
+                    size_hint: None, 0.1
+
+                Button:
+                    id: disc
+                    text: "Discard"
+                    size_hint: None, 0.1
+
+                Button:
+                    id: disc_all
+                    text: "Discard all"
+                    size_hint: None, 0.1
+
+                Label:
+                    size_hint: 1, 0.6
+
+            PlotDisplay:
+                id: frame
+                size_hint: 1, 1
 
 
 # Widget declarations
