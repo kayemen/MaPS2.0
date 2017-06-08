@@ -97,7 +97,13 @@ def max_heartsize_frame(img):
 
 
 def get_rect_params():
-    return [rect_data['pt1'], rect_data['pt2']]
+    # return [rect_data['pt1'], rect_data['pt2']]
+    return {
+        'x_start': rect_data['pt1'][1],
+        'x_end': rect_data['pt2'][1],
+        'y_end': rect_data['pt2'][0],
+        'width': abs(rect_data['pt2'][0] - rect_data['pt1'][0]),
+    }
 
 if __name__ == '__main__':
     path_list = glob.glob('../Data sets/Phase_Bidi/*.tif')
