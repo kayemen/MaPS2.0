@@ -62,6 +62,8 @@ Created on Sun Jul 24 17:20:29 2016
 #%%
 #from __future__ import division
 from os import makedirs
+import os
+import shutil
 import numpy as np
 import math
 import matplotlib.pyplot as plt
@@ -71,6 +73,8 @@ import matplotlib.pyplot as plt
 import skimage.external.tifffile as tff
 plt.close("all")
 
+
+from maps.helpers.misc import make_or_clear_directory
 #import sys
 #sys.path.append('C:\\Users\\saram_000\\Documents\\WinPython-64bit-2.7.9.2\\python-2.7.9.amd64\\Lib\\site-packages\\libtiff')
 
@@ -97,13 +101,13 @@ print('%%% validated against the phase stamping done with the supersampled frame
 ## Step 01 : Take the inputs for the data set
 
 
-location='E:/1USC/Dr. Fraser/Projects/Zebrafish Heart Atlas/150428-0502_PSRun/TEST_MISREG_Z_1_PIX_WAVE/150429_3a_homo_54hpf_sample1\Side 1/Recon alg and files/Test1_zstamp_using_corr'
+location='D:\Scripts\MaPS\Data sets'
 #this is the location where all the code and the files are saved
 folder_reconstructedimages = '/ReconstructedImages'
 #this is the folder where the reconstructed fluorescent images are saved
 newpath_reconstructedimages = location + folder_reconstructedimages
 #this is the path to the folder for reconstructed images
-makedirs(newpath_reconstructedimages)
+make_or_clear_directory(newpath_reconstructedimages)
 #this line creates this folder. So you must make sure that this folder doesn't
 #already exist
 ## important - add a test to check if the folder already exists and alert the
@@ -113,20 +117,20 @@ folder_otherdata = '/Figures'
 # this is the folder whee the figures and the excel sheets are saved
 newpath_otherdata = location + folder_otherdata
 #this is the path to the folder_otherdata
-makedirs(newpath_otherdata)
+make_or_clear_directory(newpath_otherdata)
 #this line creates this folder. So you must make sure that this folder doesn't
 #already exist
 ## important - add a test to check if the folder already exists and alert the
 #user
-folder_BF = 'Phase_Side1_crop_seq_bfr'
-prefix_BF = 'FRAMEX'    # this is the name of the Brightfeild tiff file
+folder_BF = 'Phase_Bidi'
+prefix_BF = 'Phase_Bidi1_'    # this is the name of the Brightfeild tiff file
 folderpath_BF = location + '/' + folder_BF
-index_start_number_BF = 0
+index_start_number_BF = 1
 num_digits_BF = 5
-total_frames_BF = 57696
+total_frames_BF = 4000
 #frame = importtiff(folderpath_BF,frame_number,prefix='FRAMEX',index_start_number=1,num_digits=5)
 
-name_kymo_temp ='kymo_final_XZ_41.tif' # this is the name of the kymograph image
+name_kymo_temp ='KM-XZ_71.tif' # this is the name of the kymograph image
 name_kymo = location + '/' + name_kymo_temp
 
 folder_FL = 'Fluorescent_Side1_crop_seq_bfr'
@@ -308,7 +312,7 @@ for x in range(framestobedisplayed):
 #maximapoints = np.asarray(maximapoints)
 #maximapoints = maximapoints.transpose()
 #maximapoints = maximapoints.flatten()
-maximapoints = np.transpose(np.asarray(np.where((z_stage[1:] - z_stage[:57695])<-10)))
+maximapoints = np.transpose(np.asarray(np.where((z_stage[1:] - z_stage[:total_frames_BF-1])<-10)))
 maximapoints = maximapoints.flatten()
 m = z_stage[maximapoints]
 plt.figure(251)
@@ -681,6 +685,9 @@ rectregfile_name = 'rectfilereg.csv'
 rectreg_file_path = location + '/'+ rectregfile_name
 
 rectreg_file = pandas.read_csv(rectreg_file_path)
+# x_start_reg = rectreg_file['Var2'][0]  # the -1 is because there is a one pixel shift from matlab to python
+# x_end_reg = rectreg_file['Var2'][1]  # the -1 is because there is a one pixel shift from matlab to python
+# y_end_reg = rectreg_file['Var2'][2]   # the -1 is because there is a one pixel shift from matlab to python
 x_start_reg = rectreg_file['Var2'][0]-1  # the -1 is because there is a one pixel shift from matlab to python
 x_end_reg = rectreg_file['Var2'][1]-1  # the -1 is because there is a one pixel shift from matlab to python
 y_end_reg = rectreg_file['Var2'][2]-1   # the -1 is because there is a one pixel shift from matlab to python
@@ -754,24 +761,25 @@ new_frame_index[:] = np.NAN
 
 
 folder_BF_resampled = 'Phase_Side1_crop_seq_bfr_resampled'
-prefix_BF_resampled = 'FRAMEX'    # this is the name of the Brightfeild tiff file
+prefix_BF_resampled = 'Phase_Bidi1_'    # this is the name of the Brightfeild tiff file
 folderpath_BF_resampled = location + '/' + folder_BF_resampled
-makedirs(folderpath_BF_resampled)
+make_or_clear_directory(folderpath_BF_resampled)
 
 ####################
 
-folder_BF = 'Phase_Side1_crop_seq_bfr'
-prefix_BF = 'FRAMEX'    # this is the name of the Brightfeild tiff file
+folder_BF = 'Phase_Bidi'
+# folder_BF = 'Phase_Side1_crop_seq_bfr'
+prefix_BF = 'Phase_Bidi1_'    # this is the name of the Brightfeild tiff file
 folderpath_BF = location + '/' + folder_BF
-index_start_number_BF = 0
+index_start_number_BF = 1
 num_digits_BF = 5
-total_frames_BF = 57696
+total_frames_BF = 4000
 
 newfolder = location+folder_otherdata+'/StageMotionCorrected'
-makedirs(newfolder)
+make_or_clear_directory(newfolder)
 newname= 'FRAMEX' # Name of the stage motion corrected new image data
 newfolder_unmasked = location+folder_otherdata+'/StageMotionCorrected_Unmasked'
-makedirs(newfolder_unmasked)
+make_or_clear_directory(newfolder_unmasked)
 
 
 num_zooks_for_test = 3
@@ -905,6 +913,9 @@ for i in np.arange(ignore_zooks_at_start,len(minimapoints)):
         y_left_resized = np.absolute(y_right_resized - width_resized)  # This decides the position of the
         # column number on the left side of the slide window for the current
         # frame A
+        # print x_start_resized, x_end_resized, y_left_resized, y_right_resized
+        # print mask_resized
+        print framenumber
         Aslide_resized = A_resized[x_start_resized:x_end_resized+resampling_factor,y_left_resized:y_right_resized+resampling_factor]*mask_resized; # A_slide
         # contains the multiplication of the image in the sliding window
         # with mask that was drawn by the user
@@ -1105,7 +1116,7 @@ print('##################################################')
 #folder_BF = 'Phase_Side1_crop_seq_bfr'
 #prefix_BF = 'FRAMEX'    # this is the name of the Brightfeild tiff file
 #folderpath_BF = location + '/' + folder_BF
-#index_start_number_BF = 0
+#index_start_number_BF = 1
 #num_digits_BF = 5
 #total_frames_BF = 57696
 #
@@ -1365,7 +1376,7 @@ print(' Step 06 : Finding Representative Images started')
 meanperiodframes =  meanperiodframes_corr
 
 repfolder = location+folder_otherdata+'/Representative Phases'
-makedirs(repfolder)
+make_or_clear_directory(repfolder)
 repname= 'FRAMEX' # Name of the stage motion corrected new image data
 
 
@@ -1500,7 +1511,7 @@ print(' Step 07 : Phase Stamping for all frames started')
 
 
 maskedBFfolder = location+folder_otherdata+'/Masked BF Frames'
-makedirs(maskedBFfolder)
+make_or_clear_directory(maskedBFfolder)
 maskedname= 'FRAMEX' # Name of the stage motion corrected new image data
 
 
