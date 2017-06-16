@@ -1,5 +1,5 @@
 *.pyc
 */*.pyc
 local*
-
+activate_venv.ps1
 maps/modified_inputs\.json
