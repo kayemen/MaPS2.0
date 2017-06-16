@@ -27,3 +27,7 @@ else:
     for inputvar in INPUTS_LIST:
         obj = get_varobj(inputvar)
         exec('%s = get_inputs.get_setting_from_user(obj["description"], obj["type"], obj["default_val"])' % (inputvar, ))
+
+
+def reload_current_settings():
+    pass

@@ -18,6 +18,7 @@ class LoadDialog(FloatLayout):
     cancel = ObjectProperty(None)
     dirselect = BooleanProperty(False)
 
+
 class FileChooserWidget(BoxLayout):
     text = ObjectProperty(None)
     file_field = ObjectProperty(None)

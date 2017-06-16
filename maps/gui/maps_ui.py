@@ -15,7 +15,9 @@ from kivy.graphics.texture import Texture
 from kivy.uix.image import Image
 
 # from ..gui_modules import load_image_sequence, create_image_overlay
+from maps import settings
 from maps.helpers.gui_modules import load_image_sequence, create_image_overlay, rectangular_select, max_heartsize_frame, get_rect_params
+from maps.helpers.misc import pickle_object
 from maps.gui.widgets.image_display import FrameDisplay
 from maps.gui.widgets.settings_widgets import FileChooserWidget, SettingRow
 
@@ -51,14 +53,13 @@ class InterfaceManager(BoxLayout):
     def __init__(self, **kwargs):
         super(InterfaceManager, self).__init__(**kwargs)
         self.InputParametersView = InputParametersView()
-        self.FrameSelectionView = FrameSelectionView()
-        self.ZookPruningView = ZookPruningView()
-        self.view_order = [
-            self.InputParametersView,
-            self.FrameSelectionView,
-            self.ZookPruningView
-        ]
-        self.current_view = 0
+        # self.view_order = [
+        #     self.InputParametersView,
+        #     self.FrameSelectionView,
+        #     self.ZookPruningView
+        # ]
+        # self.current_view = 0
+        self.load_widgets()
         self.screen_area.add_widget(self.view_order[self.current_view])
         # self.progress_bar.value_normalized = float(self.current_view) / len(self.view_order)
         popup_content = BoxLayout(orientation='vertical')
@@ -70,6 +71,18 @@ class InterfaceManager(BoxLayout):
         cls_btn.bind(on_release=self.error_popup.dismiss)
 
     #     self.add_widget(self.InputParametersView)
+
+    def load_widgets(self):
+        self.FrameSelectionView = FrameSelectionView()
+        self.ZookPruningView = ZookPruningView()
+
+        self.view_order = [
+            self.InputParametersView,
+            self.FrameSelectionView,
+            self.ZookPruningView
+        ]
+
+        self.current_view = 0
 
     def load_previous_screen(self):
         if self.current_view > 0:
@@ -125,12 +138,15 @@ class InterfaceManager(BoxLayout):
     def reload_settings(self, new_parameters):
         # TODO
         print 'reloading settings'
+        settings.reload_current_settings()
+        self.load_widgets()
 
 
 class InputParametersView(BoxLayout):
     # parameters = json.load(open('maps/default_inputs.json'))
     parameters = ObjectProperty()
-    json_path = StringProperty('maps/default_inputs.json')
+    json_path = StringProperty('maps/current_inputs.json')
+    setting_path = 'maps/current_inputs.json'
     screen = ObjectProperty()
 
     def __init__(self, **kwargs):
@@ -194,7 +210,8 @@ class InputParametersView(BoxLayout):
             obj['value'] = new_val
 
         # pprint.pprint(self.parameters, width=1)
-        json.dump(self.parameters, open(self.json_path, 'w'))
+        json.dump(self.parameters, open(self.setting_path, 'w'))
+        self.json_path = self.setting_path[:]
 
     def reload_settings(self):
         print self.setting_list
@@ -236,6 +253,14 @@ class FrameSelectionView(BoxLayout):
         self.selected_region = get_rect_params()
         print 'Frame:', self.selected_frame
         print 'Region:', self.selected_region
+        data = [
+            ('frame', self.selected_frame),
+            ('x_end', self.selected_region['x_end']),
+            ('height', self.selected_region['height']),
+            ('y_end', self.selected_region['y_end']),
+            ('width', self.selected_region['width']),
+        ]
+        pickle_object(data, file_name='corr_window.csv', dumptype='csv')
 
     def on_img_select(self, instance, value):
         # Disabling the region selection button till frame is finalized

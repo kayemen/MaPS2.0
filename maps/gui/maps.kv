@@ -180,6 +180,10 @@
             min: 0
             max: frame.frame_count - 1
 
+        Label:
+            text: "Frame # %d" % root.img_select
+            size_hint: 0.15, 1
+
         Button:
             id: frame_select
             text: "SELECT FRAME"
@@ -239,17 +243,17 @@
 
                 Button:
                     id: view
-                    text: "View"
+                    text: "Zook list"
                     size_hint: None, 0.1
 
                 Button:
                     id: keep
-                    text: "Keep"
+                    text: "Keep zook"
                     size_hint: None, 0.1
 
                 Button:
                     id: disc
-                    text: "Discard"
+                    text: "Discard zook"
                     size_hint: None, 0.1
 
                 Button:
