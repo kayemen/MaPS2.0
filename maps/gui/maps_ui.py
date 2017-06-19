@@ -155,6 +155,10 @@ class InputParametersView(BoxLayout):
 
         self.load_settings_json()
 
+        # Used for scrollview.
+        # Sets the height of children inside the gridlayout to 35 pixels
+        self.screen.height = len(self.parameters) * 35
+
     def load_settings_json(self):
         try:
             self.parameters = json.load(open(self.json_path))
