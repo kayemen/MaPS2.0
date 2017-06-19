@@ -2,19 +2,27 @@ from kivy.uix.image import Image
 from kivy.graphics.texture import Texture
 from kivy.properties import StringProperty, NumericProperty
 
+from maps.settings import setting
+
 import glob
+import os
 import cv2
 
 from maps.helpers.gui_modules import create_image_overlay, load_image_sequence
 
 
 class FrameDisplay(Image):
-    path = StringProperty('../Data sets/Phase_Bidi/*.tif')
+    path = StringProperty('')
     frame_count = NumericProperty(50)
 
     def __init__(self, **kwargs):
         super(FrameDisplay, self).__init__(**kwargs)
-        self.path_list = glob.glob(self.path)[:self.frame_count]
+
+    def load_frames(self):
+        print setting
+        self.path = setting['bf_path']
+        self.frame_count = setting['fphb']
+        self.path_list = glob.glob(os.path.join(self.path, '*.tif'))[:self.frame_count]
         self.selection_window = [0, 0]
         self.img_seq = load_image_sequence(self.path_list)
 

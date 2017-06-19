@@ -1,121 +1,162 @@
 [
     {
-        "varname": "data_dump",
-        "helptext": "",
         "description": "Raw data file dump location",
-        "value": "",
+        "varname": "data_dump",
+        "value": "D:\\Scripts\\MaPS\\Data sets\\Raw data",
+        "helptext": "",
+        "hidden": false,
         "type": "path"
     },
     {
-        "varname": "km_path",
-        "helptext": "",
         "description": "Kymograph folder location",
-        "value": "",
+        "varname": "km_path",
+        "value": "D:\\Scripts\\MaPS\\Data sets\\Kymographs",
+        "helptext": "",
+        "hidden": false,
         "type": "path"
     },
     {
-        "varname": "bf_path",
-        "helptext": "",
         "description": "Phase-stamping frames folder",
-        "value": "",
+        "varname": "bf_path",
+        "value": "D:\\Scripts\\MaPS\\Data sets\\Phase_Bidi",
+        "helptext": "",
+        "hidden": false,
         "type": "path"
     },
     {
-        "varname": "bf_framecount",
+        "description": "Name prefix of phase stamping images",
+        "varname": "image_prefix",
+        "value": "'Phase_Bidi1_'",
         "helptext": "",
+        "hidden": false,
+        "type": "str"
+    },
+    {
+        "description": "Starting index of phase image names",
+        "varname": "index_start_at",
+        "value": "1",
+        "helptext": "",
+        "hidden": false,
+        "type": "int"
+    },
+    {
+        "description": "Number of digits in image name",
+        "varname": "num_digits",
+        "value": "5",
+        "helptext": "",
+        "hidden": false,
+        "type": "int"
+    },
+    {
+        "description": "Location of first minima in kymograph",
+        "varname": "first_minima",
+        "value": "0",
+        "helptext": "",
+        "hidden": true,
+        "type": "int"
+    },
+    {
         "description": "Phase-stamping frame count",
+        "varname": "bf_framecount",
         "value": "1000",
+        "helptext": "",
+        "hidden": false,
         "type": "int"
     },
     {
-        "varname": "bf_fps",
-        "helptext": "",
         "description": "Phase FPS",
+        "varname": "bf_fps",
         "value": "0",
+        "helptext": "",
+        "hidden": false,
         "type": "int"
     },
     {
-        "varname": "stat_bf_path",
-        "helptext": "",
         "description": "Stationary brightfield images folder",
+        "varname": "stat_bf_path",
         "value": "",
+        "helptext": "",
+        "hidden": false,
         "type": "path"
     },
     {
-        "varname": "bf_fps",
-        "helptext": "",
-        "description": "Phase FPS",
-        "value": "0",
-        "type": "int"
-    },
-    {
-        "varname": "BF_resolution",
-        "helptext": "",
         "description": "Phase resolution",
+        "varname": "BF_resolution",
         "value": "0.6296",
+        "helptext": "",
+        "hidden": false,
         "type": "float"
     },
     {
-        "varname": "fm_path",
-        "helptext": "",
         "description": "Fluorescent frames folder",
+        "varname": "fm_path",
         "value": "",
+        "helptext": "",
+        "hidden": false,
         "type": "path"
     },
     {
-        "varname": "fm_fps",
-        "helptext": "",
         "description": "Fluorescent FPS",
+        "varname": "fm_fps",
         "value": "0",
+        "helptext": "",
+        "hidden": false,
         "type": "int"
     },
     {
-        "varname": "fphb",
-        "helptext": "",
         "description": "Approximate Frames per heartbeat",
-        "value": "20",
+        "varname": "fphb",
+        "value": "30",
+        "helptext": "",
+        "hidden": false,
         "type": "int"
     },
     {
-        "varname": "ZookZikPeriod",
-        "helptext": "",
         "description": "Frames per zook",
+        "varname": "ZookZikPeriod",
         "value": "192",
+        "helptext": "",
+        "hidden": false,
         "type": "int"
     },
     {
-        "varname": "resampling_factor",
-        "helptext": "",
         "description": "Resampling factor",
+        "varname": "resampling_factor",
         "value": "5",
+        "helptext": "",
+        "hidden": false,
         "type": "int"
     },
     {
-        "varname": "slide_limit",
-        "helptext": "",
         "description": "Local shift limit",
+        "varname": "slide_limit",
         "value": "5",
+        "helptext": "",
+        "hidden": false,
         "type": "int"
     },
     {
-        "varname": "ignore_startzook",
-        "helptext": "",
         "description": "Initial intrazook frames discarded",
+        "varname": "ignore_startzook",
         "value": "7",
+        "helptext": "",
+        "hidden": false,
         "type": "int"
     },
     {
-        "varname": "ignore_endzook",
-        "helptext": "",
         "description": "Final intrazook frames discarded",
+        "varname": "ignore_endzook",
         "value": "3",
+        "helptext": "",
+        "hidden": false,
         "type": "int"
     },
     {
-        "varname": "ignore_zooks_at_start",
-        "helptext": "",
         "description": "Initial zooks discarded",
+        "varname": "ignore_zooks_at_start",
         "value": "2",
+        "helptext": "",
+        "hidden": false,
         "type": "int"
     }
 ]

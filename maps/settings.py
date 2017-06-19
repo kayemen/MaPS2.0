@@ -1,33 +1,33 @@
 # File containing default values for use in MaPS
 import json
-import get_inputs
+import os
+# import get_inputs
 
-DEFAULT_PARAMETERS_JSON = json.load(open('default_inputs.json'))
+BASE_DIR = os.path.dirname(__file__)
 
-FORCE_DEFAULT = False
+setting = {}
 
-LOAD_ALTERNATE_INPUTS = False
+def reload_current_settings(setting_json_path=os.path.join(BASE_DIR, 'current_inputs.json')):
+    global setting
 
-INPUTS_LIST = [obj['varname'] for obj in DEFAULT_PARAMETERS_JSON]
+    setting_json = json.load(open(setting_json_path))
+    varnames = [obj['varname'] for obj in setting_json]
+    get_varobj = lambda varname: setting_json[varnames.index(varname)]
 
-if LOAD_ALTERNATE_INPUTS:
-    try:
-        DEFAULT_INPUTS.update(json.load(open('./local_default_inputs.json')))
-    except:
-        import traceback
-        traceback.print_exc()
+    for varobj in varnames:
+        setting_obj = get_varobj(varobj)
 
-get_varobj = lambda varname: DEFAULT_PARAMETERS_JSON[INPUTS_LIST.index(varname)]
-
-if FORCE_DEFAULT:
-    for inputvar in INPUTS_LIST:
-        obj = get_varobj(inputvar)
-        exec('%s = get_inputs.get_setting_from_object(obj["type"], obj["default_val"])' % (inputvar, ))
-else:
-    for inputvar in INPUTS_LIST:
-        obj = get_varobj(inputvar)
-        exec('%s = get_inputs.get_setting_from_user(obj["description"], obj["type"], obj["default_val"])' % (inputvar, ))
-
-
-def reload_current_settings():
-    pass
+        # exec('global %s' % varobj)
+        if setting_obj['value'] != '':
+        #     exec('%s = %s' % (varobj, setting_obj['value']), globals())
+            if setting_obj['type'] == 'int':
+                setting[varobj] = int(setting_obj['value'])
+            elif setting_obj['type'] == 'float':
+                setting[varobj] = float(setting_obj['value'])
+            # elif setting_obj['type'] == 'path':
+            #     setting[varobj] = is_path(setting_obj['value'])
+            else:
+                setting[varobj] = setting_obj['value']
+        else:
+        #     exec('%s = None' % (varobj, ), globals())
+            setting[varobj] = None

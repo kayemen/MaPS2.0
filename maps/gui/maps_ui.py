@@ -53,13 +53,13 @@ class InterfaceManager(BoxLayout):
     def __init__(self, **kwargs):
         super(InterfaceManager, self).__init__(**kwargs)
         self.InputParametersView = InputParametersView()
-        # self.view_order = [
-        #     self.InputParametersView,
+        self.view_order = [
+            self.InputParametersView,
         #     self.FrameSelectionView,
         #     self.ZookPruningView
-        # ]
-        # self.current_view = 0
-        self.load_widgets()
+        ]
+        self.current_view = 0
+        settings.reload_current_settings()
         self.screen_area.add_widget(self.view_order[self.current_view])
         # self.progress_bar.value_normalized = float(self.current_view) / len(self.view_order)
         popup_content = BoxLayout(orientation='vertical')
@@ -90,6 +90,7 @@ class InterfaceManager(BoxLayout):
         # self.progress_bar.value_normalized = float(self.current_view) / len(self.view_order)
 
     def load_next_screen(self):
+        self.load_widgets()
         if self.current_view < len(self.view_order) - 1:
             self.load_screen((self.current_view + 1))
             # self.progress_bar.value_normalized = float(self.current_view) / len(self.view_order)
@@ -145,8 +146,8 @@ class InterfaceManager(BoxLayout):
 class InputParametersView(BoxLayout):
     # parameters = json.load(open('maps/default_inputs.json'))
     parameters = ObjectProperty()
-    json_path = StringProperty('maps/current_inputs.json')
-    setting_path = 'maps/current_inputs.json'
+    json_path = StringProperty(os.path.join(settings.BASE_DIR, 'current_inputs.json'))
+    setting_path = os.path.join(settings.BASE_DIR, 'current_inputs.json')
     screen = ObjectProperty()
 
     def __init__(self, **kwargs):
@@ -157,7 +158,6 @@ class InputParametersView(BoxLayout):
     def load_settings_json(self):
         try:
             self.parameters = json.load(open(self.json_path))
-            # pprint.pprint(self.parameters, width=1)
             self.screen.clear_widgets()
             self.setting_list = {}
             self.load_setting_widgets()
@@ -188,13 +188,15 @@ class InputParametersView(BoxLayout):
             self.setting_list[setting_obj['varname']] = self.create_setting_layout(**setting_obj)
             self.screen.add_widget(self.setting_list[setting_obj['varname']])
 
-    def create_setting_layout(self, varname, description, type, helptext=None, value=None):
+    def create_setting_layout(self, varname, description, type, helptext=None, value=None, hidden=False):
         setting_layout = SettingRow(size_hint=(1, 0.06))
         setting_layout.add_widget(Label(text=description, size_hint_x=0.4))
         if type == 'path':
             setting_layout.add_widget(FileChooserWidget(size_hint_x=0.6, dirselect=True))
         elif type == 'file':
             setting_layout.add_widget(FileChooserWidget(size_hint_x=0.6, dirselect=False))
+        elif type == 'str':
+            setting_layout.add_widget(TextInput(text=str(value), size_hint_x=0.6))
         elif type == 'int' or type == 'float':
             setting_layout.add_widget(TextInput(text=str(value), size_hint_x=0.6))
 
@@ -225,6 +227,7 @@ class InputParametersView(BoxLayout):
         global error_message
         # TODO
         error_message = 'Error in data entered. Please check entered data'
+        # Return false if error found
         return True
 
 
@@ -240,6 +243,7 @@ class FrameSelectionView(BoxLayout):
         Clock.schedule_interval(self.img_frame.update, 1.0 / fps)
         self.selected_frame = None
         self.selected_region = None
+        self.img_frame.load_frames()
 
     def mark_frame(self):
         self.selected_frame = int(self.img_select)
