@@ -21,19 +21,19 @@ import cv2
 
 logger = logging.getLogger(__name__)
 
-# TODO: Use settings module instead of hard coded values (replace # setting#)
-setting['ignore_zooks_at_start'] = 1  # setting#
-setting['ignore_startzook'] = 7  # setting#
-setting['ignore_endzook'] = 3  # setting#
-setting['BF_resolution'] = 0.6296  # setting#
-setting['image_prefix'] = 'Phase_Bidi1_'  # setting#
-setting['data_dump'] = 'D:\\Scripts\\MaPS\\Data sets\\Raw data\\'  # setting#
-setting['resampling_factor'] = 5  # setting#
-setting['slide_limit'] = 5  # setting#
-setting['ZookZikPeriod'] = 192  # setting#
-setting['index_start_at'] = 1  # setting#
-setting['num_digits'] = 5  # setting#
-setting['first_minima'] = 0  # setting#
+# # Uncomment if manual overide of settings is needed
+# setting['ignore_zooks_at_start'] = 1  # setting#
+# setting['ignore_startzook'] = 7  # setting#
+# setting['ignore_endzook'] = 3  # setting#
+# setting['BF_resolution'] = 0.6296  # setting#
+# setting['image_prefix'] = 'Phase_Bidi1_'  # setting#
+# setting['data_dump'] = 'D:\\Scripts\\MaPS\\Data sets\\Raw data\\'  # setting#
+# setting['resampling_factor'] = 5  # setting#
+# setting['slide_limit'] = 5  # setting#
+# setting['ZookZikPeriod'] = 192  # setting#
+# setting['index_start_at'] = 1  # setting#
+# setting['num_digits'] = 5  # setting#
+# setting['first_minima'] = 0  # setting#
 
 
 # TODO: add logging
@@ -541,6 +541,20 @@ if __name__ == '__main__':
     logging.config.dictConfig(logger_config)
 
     logger = logging.getLogger('maps.core.z_stamping')
+
+    # # Uncomment if manual overide of settings is needed
+    setting['ignore_zooks_at_start'] = 1  # setting#
+    setting['ignore_startzook'] = 7  # setting#
+    setting['ignore_endzook'] = 3  # setting#
+    setting['BF_resolution'] = 0.6296  # setting#
+    setting['image_prefix'] = 'Phase_Bidi1_'  # setting#
+    setting['data_dump'] = 'D:\\Scripts\\MaPS\\Data sets\\Raw data\\'  # setting#
+    setting['resampling_factor'] = 5  # setting#
+    setting['slide_limit'] = 5  # setting#
+    setting['ZookZikPeriod'] = 192  # setting#
+    setting['index_start_at'] = 1  # setting#
+    setting['num_digits'] = 5  # setting#
+    setting['first_minima'] = 0  # setting#
 
     z_stamp_opt, z_stamp_cf, res, bad_zooks = z_stamping_step(
         'D:\Scripts\MaPS\Data sets\KM-XZ_0.tif',
