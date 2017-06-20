@@ -494,7 +494,13 @@ def detect_bad_zooks(residues, maxima_points, minima_points, slopes):
             width = 0.8 * (bins[1] - bins[0])
             center = (bins[:-1] + bins[1:]) / 2
             plt.bar(center, hist, align='center', width=width)
-            plt.savefig('D:\\Scripts\\MaPS\\Data sets\\Raw data\\Hist vals\\27_per\\zook%d.png' % zook, bbox_inches='tight')
+            plt.savefig(
+                os.path.join(
+                    setting['data_dump'],
+                    'Hist vals\\%d_per\\zook%d.png' % (int(c * 100), zook)
+                ),
+                bbox_inches='tight'
+            )
             plt.gcf().clear()
 
     return bad_zooks
