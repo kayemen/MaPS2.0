@@ -69,7 +69,7 @@ USE_GUI_SELECTION_WINDOW = True
 # This frame will be used as reference frame
 frame_no = 12
 
-if USE_GUI_SELECTION_WINDOW:
+if USE_GUI_SELECTION_WINDOW and not use_existing_datadump_vals:
     # Uses GUI to select rectangular window in specified frame.
     # Click and drag with mouse tto select region. Clos window to finalize
     img_path = glob.glob(

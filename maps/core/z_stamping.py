@@ -526,7 +526,7 @@ def z_stamping_step(kymo_path, frame_count, phase_img_path, use_old=False):
 
     else:
         import pickle
-        with open('D:\\Scripts\\MaPS\\Data sets\\Raw data\\z_stamp_opt.pkl') as pkfp:
+        with open(os.path.join(setting['data_dump'], 'z_stamp_opt.pkl')) as pkfp:
             z_stamp_opt = pickle.load(pkfp)
 
     z_stamp_cf, res, slope_list = compute_zstamp_curvefit(z_stamp_opt, maxp, minp)
