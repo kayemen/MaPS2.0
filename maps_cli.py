@@ -3,8 +3,12 @@ import matplotlib.pyplot as plt
 from maps.core.z_stamping import z_stamping_step
 from maps.helpers.logging_config import logger_config
 from maps.settings import reload_current_settings, setting
+from maps.helpers.misc import pickle_object
+from maps.helpers.gui_modules import load_image_sequence, max_heartsize_frame, get_rect_params
 
 import logging
+import os
+import glob
 
 logging.config.dictConfig(logger_config)
 logger = logging.getLogger('MaPS')
@@ -45,7 +49,7 @@ setting['first_minima'] = 0
 kymograph_path = 'D:\Scripts\MaPS\Data sets\Kymographs\KM-XZ_0.tif'
 
 # Number of frames to process
-frame_count = 9999
+frame_count = 999
 
 # Folder containing brightfield images for phase stamping. The images must be
 # named sequentially
@@ -53,9 +57,59 @@ phase_image_folder = 'D:\\Scripts\\MaPS\\Data sets\\Phase_Bidi\\'
 
 # Whether to use existing z stamp values from "data dump" folder, or compute
 # from raw images over again
-use_existing_datadump_vals = False
+use_existing_datadump_vals = True
 
-# STEP 1: Z stamping step
+# STEP 1: Correlation window selection
+# This step selects the small rectangular region to be used when calculating
+# shift in pixels of each frame from a reference frame. This is used for
+# z stamping the frames. The window a=parameters are dudmped as a csv file.
+USE_GUI_SELECTION_WINDOW = True
+
+# Frame number of the frame with the largest heart size.
+# This frame will be used as reference frame
+frame_no = 12
+
+if USE_GUI_SELECTION_WINDOW:
+    # Uses GUI to select rectangular window in specified frame.
+    # Click and drag with mouse tto select region. Clos window to finalize
+    img_path = glob.glob(
+        os.path.join(phase_image_folder, '*.tif')
+    )[frame_no]
+    img_seq = load_image_sequence([img_path])
+    max_heartsize_frame(img_seq[0])
+
+    params = get_rect_params()
+
+    x_end = params['x_end']
+    height = params['height']
+    y_end = params['y_end']
+    width = params['width']
+else:
+    # Bottom edge of window
+    x_end = 119
+    # Height of window
+    height = 46
+    # Right edge of window
+    y_end = 240
+    # Width of window
+    width = 38
+
+data = [
+    ('frame', frame_no),
+    ('x_end', x_end),
+    ('height', height),
+    ('y_end', y_end),
+    ('width', width),
+]
+
+print 'Using reference frame as-'
+print '\n'.join(['%s:%d' % (i[0], i[1]) for i in data])
+
+pickle_object(data, file_name='corr_window.csv', dumptype='csv')
+
+raw_input('Press enter to continue...')
+
+# STEP 2: Z stamping step
 # This function takes a single kymograph, the number of frames to process,
 # the location of phase stamping images and an optional flag (whether to
 # recompute z stamp values or used pickled values)
