@@ -7,15 +7,18 @@ from kivy.uix.label import Label
 from kivy.uix.textinput import TextInput
 from kivy.uix.checkbox import CheckBox
 from kivy.uix.popup import Popup
+from kivy.uix.treeview import TreeView, TreeViewNode, TreeViewLabel
 from kivy.factory import Factory
 from kivy.clock import Clock
 from kivy.graphics import Rectangle, Color, Line
-
 from kivy.graphics.texture import Texture
 from kivy.uix.image import Image
 
 # from ..gui_modules import load_image_sequence, create_image_overlay
 from maps import settings
+
+from maps.core.z_stamping import z_stamping_step
+
 from maps.helpers.gui_modules import load_image_sequence, create_image_overlay, rectangular_select, max_heartsize_frame, get_rect_params
 from maps.helpers.misc import pickle_object
 
@@ -328,11 +331,142 @@ class ReferenceFrameSelectionView(BoxLayout):
 
 
 class ZookPruningView(BoxLayout):
-    frame = ObjectProperty()
+    img_frame = ObjectProperty()
+    kymo_plot = ObjectProperty()
+    kymo_sel = ObjectProperty()
+    zook_sel = ObjectProperty()
+    selected_zook = NumericProperty(-1)
+    selected_frame = NumericProperty(-1)
 
-    def __init__(self, fps=0.2, **kwargs):
+    def __init__(self, fps=20, **kwargs):
         super(ZookPruningView, self).__init__(**kwargs)
-        Clock.schedule_once(self.frame.update, 1.0 / fps)
+        self.fps = fps
+        self.img_frame.load_frames(None)
+        kymo_paths = glob.glob(
+            os.path.join(
+                settings.setting['km_path'],
+                '*.tif'
+            )
+        )
+        self.kymo_names = {os.path.basename(filepath): False for filepath in kymo_paths}
+        self.kymo_paths = {os.path.basename(filepath): filepath for filepath in kymo_paths}
+        kymo_names = self.kymo_names.keys()
+        kymo_names.sort()
+        self.kymo_sel.values = kymo_names
+        self.selected_kymo = ''
+        self.img_frame.frame_count = settings.setting['ZookZikPeriod']
+        self.img_frame.display_blank = True
+        self.bad_zooks = []
+
+        def show_display(spinner, text):
+            if text != self.selected_kymo:
+                self.clear_zook_tree()
+            self.selected_kymo = text
+
+        self.kymo_sel.bind(text=show_display)
+        self.bind(selected_zook=self.load_zook_frames, selected_frame=self.move_slider_to_frame)
+
+        self.zook_sel.bind(minimum_height=self.zook_sel.setter('height'))
+
+    def widget_active(self):
+        self.refresh = Clock.schedule_interval(self.img_frame.update, 1.0 / self.fps)
+
+    def widget_inactive(self):
+        self.refresh.cancel()
+
+    def process_kymograph(self):
+        if self.selected_kymo != '':
+            self.refresh.cancel()
+            if self.kymo_names[self.selected_kymo]:
+                print 'Already processed this kymo'
+                self.selected_zook = -1
+                self.selected_frame = -1
+            else:
+                self.selected_zook = -1
+                self.selected_frame = -1
+                self.z_stamps, _, self.residues, self.bad_zooks = z_stamping_step(
+                    kymo_path=self.kymo_paths[self.selected_kymo],
+                    frame_count=settings.setting['bf_framecount'],
+                    phase_img_path=settings.setting['bf_path'],
+                    use_old=settings.setting['use_pkl_zstamp'],
+                    datafile_name='z_stamp_opt_%s.pkl' % (self.selected_kymo[:-4])
+                )
+                self.kymo_names[self.selected_kymo] = True
+                self.bad_zooks_to_tree()
+            self.refresh = Clock.schedule_interval(self.img_frame.update, 1.0 / self.fps)
+
+
+    # FrameSelectionWidget modification functions
+    def load_zook_frames(self, widget, zook_no):
+        if zook_no == -1:
+            # Load blank frame
+            self.img_frame.display_blank = True
+        else:
+            self.img_frame.display_blank = False
+            start_frame = zook_no * settings.setting['ZookZikPeriod']
+            end_frame = start_frame + settings.setting['ZookZikPeriod']
+            img_paths = glob.glob(
+                os.path.join(settings.setting['bf_path'], '*.tif')
+            )[start_frame: end_frame]
+            self.img_frame.load_frames(img_paths)
+            self.img_frame.frame_start = start_frame
+            if self.selected_frame == -1:
+                self.selected_frame = 0
+
+    def move_slider_to_frame(self, widget, frame_no):
+        if frame_no == -1:
+            # Do nothing
+            pass
+        else:
+            self.img_frame.frame_selector.value = frame_no % settings.setting['ZookZikPeriod']
+
+    # Zook tree view methods
+    def clear_zook_tree(self):
+        node_list = self.zook_sel.root.nodes[:]
+        for node in node_list:
+            self.zook_sel.remove_node(node)
+
+    def bad_zooks_to_tree(self):
+        self.clear_zook_tree()
+        for bad_zook in self.bad_zooks:
+            zook_node = self.zook_sel.add_node(
+                TreeViewLabel(text='Zook#%d' % (bad_zook[0]))
+            )
+            zook_node.bind(is_selected=self.zook_node_callback)
+            for bad_frame in bad_zook[2]:
+                frame_node = self.zook_sel.add_node(
+                    TreeViewLabel(text='Frame#%d' % (bad_frame)),
+                    zook_node
+                )
+                frame_node.bind(is_selected=self.frame_node_callback)
+
+    # Tree view callbacks
+    def zook_node_callback(self, zook_node, selected):
+        if selected:
+            self.selected_zook = int(zook_node.text.replace('Zook#', ''))
+
+    def frame_node_callback(self, frame_node, selected):
+        if selected:
+            zook_no = int(frame_node.parent_node.text.replace('Zook#', ''))
+            if self.selected_zook != zook_no:
+                self.selected_zook = zook_no
+            self.selected_frame = int(frame_node.text.replace('Frame#', ''))
+
+    # TODO: Button callbacks
+    def prev_zook_callback(self):
+        pass
+
+    def next_zook_callback(self):
+        pass
+
+    def keep_zook_callback(self):
+        pass
+
+    def discard_zook_callback(self):
+        pass
+
+    def discard_all_callback(self):
+        pass
 
     def validate_step(self):
         return True
@@ -341,11 +475,7 @@ class ZookPruningView(BoxLayout):
 class MapsApp(App):
 
     def build(self):
-        # paramters = json.load(open('../default_inputs.json'))
-
-        # root_widget = BoxLayout(orientation='vertical')
-        w = InterfaceManager()
-        return w
+        return InterfaceManager()
 
 
 if __name__ == '__main__':
