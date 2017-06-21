@@ -24,13 +24,24 @@ class FileChooserWidget(BoxLayout):
     file_field = ObjectProperty(None)
     dirselect = BooleanProperty(False)
 
+    def __init__(self, init_text='', **kwargs):
+        super(FileChooserWidget, self).__init__(**kwargs)
+        self.file_field.text = init_text
+
     def dismiss_popup(self):
         self._popup.dismiss()
 
     def show_load(self):
-        content = LoadDialog(load=self.load, cancel=self.dismiss_popup, dirselect=self.dirselect)
-        self._popup = Popup(title="Load file", content=content,
-                            size_hint=(0.9, 0.9))
+        content = LoadDialog(
+            load=self.load,
+            cancel=self.dismiss_popup,
+            dirselect=self.dirselect
+        )
+        self._popup = Popup(
+            title="Load file",
+            content=content,
+            size_hint=(0.9, 0.9)
+        )
         self._popup.open()
 
     def load(self, path, filename):

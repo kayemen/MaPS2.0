@@ -37,7 +37,7 @@ def pickle_object(data, file_name=None, dumptype='pkl'):
 
     final_path = os.path.join(data_dump, file_name)
 
-    if os.path.splitext(final_path)[1] != dumptype:
+    if not final_path.endswith(dumptype):
         final_path = '%s.%s' % (final_path, dumptype)
 
     if dumptype == 'xlsx':

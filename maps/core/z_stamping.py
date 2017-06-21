@@ -18,6 +18,7 @@ import logging
 import maps
 import csv
 import cv2
+import time
 
 logger = logging.getLogger(__name__)
 
@@ -374,6 +375,9 @@ def compute_frame_shift_values(img_path, maxima_points, minima_points, z_stamp_d
     '''
     z_stamp_optimal = np.zeros(z_stamp_det.shape)
 
+    # Time stamp values
+    zook_time_stats = np.zeros(len(minima_points) - setting['ignore_zooks_at_start'])
+
     # Load window parameters
     x_start, x_end, y_start, y_end, height, width, ref_frame_no = load_correlation_window_params('corr_window.csv')
 
@@ -398,6 +402,8 @@ def compute_frame_shift_values(img_path, maxima_points, minima_points, z_stamp_d
     for zook in np.arange(setting['ignore_zooks_at_start'], len(minima_points)):
         start_frame, end_frame = compute_zook_extents(maxima_points[zook], minima_points[zook])
 
+        print 'Processing Zook#%d' % zook
+        tic = time.time()
         for frame_no in np.arange(start_frame, end_frame):
             # Compute window params
             y_start_resized_frame = y_start_resized + z_stamp_det_shifted[frame_no]
@@ -414,6 +420,8 @@ def compute_frame_shift_values(img_path, maxima_points, minima_points, z_stamp_d
                 z_stamp_optimal,
                 z_stamp_det_shifted
             )
+        print time.time() - tic
+        zook_time_stats[zook - setting['ignore_zooks_at_start']] = time.time() - tic
 
     z_stamp_optimal_resized = z_stamp_optimal / setting['resampling_factor']
 
@@ -511,9 +519,9 @@ def shift_frames_and_store(img_path, z_stamps):
     pass
 
 
-def z_stamping_step(kymo_path, frame_count, phase_img_path, use_old=False):
+def z_stamping_step(kymo_path, frame_count, phase_img_path, use_old=False, datafile_name='z_stamp_opt.pkl'):
     '''
-    Singel function to handle entire z stamping step
+    Single function to handle entire z stamping step
     '''
     kymo_data = load_kymograph(kymo_path)
     z_stage_data = compute_raw_zstage(kymo_data[:frame_count, :])
@@ -528,11 +536,11 @@ def z_stamping_step(kymo_path, frame_count, phase_img_path, use_old=False):
         z_stamp_opt, z_stamp_opt_resized = compute_frame_shift_values(phase_img_path, maxp, minp, z_stamp_det)
 
         # TODO: Save as csv as well
-        pickle_object(z_stamp_opt, 'z_stamp_opt.pkl', dumptype='pkl')
+        pickle_object(z_stamp_opt, datafile_name, dumptype='pkl')
 
     else:
         import pickle
-        with open(os.path.join(setting['data_dump'], 'z_stamp_opt.pkl')) as pkfp:
+        with open(os.path.join(setting['data_dump'], datafile_name)) as pkfp:
             z_stamp_opt = pickle.load(pkfp)
 
     z_stamp_cf, res, slope_list = compute_zstamp_curvefit(z_stamp_opt, maxp, minp)

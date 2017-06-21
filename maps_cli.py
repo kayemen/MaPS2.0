@@ -118,7 +118,8 @@ z_stamp_opt, z_stamp_cf, res, bad_zooks = z_stamping_step(
     kymo_path=kymograph_path,
     frame_count=frame_count,
     phase_img_path=phase_image_folder,
-    use_old=use_existing_datadump_vals
+    use_old=use_existing_datadump_vals,
+    datafile_name='z_stamp_opt_KM-XZ_0.pkl'
 )
 
 # Example of display values

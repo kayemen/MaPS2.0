@@ -24,6 +24,8 @@ def reload_current_settings(setting_json_path=os.path.join(BASE_DIR, 'current_in
                 setting[varobj] = int(setting_obj['value'])
             elif setting_obj['type'] == 'float':
                 setting[varobj] = float(setting_obj['value'])
+            elif setting_obj['type'] == 'bool':
+                setting[varobj] = setting_obj['value'].lower() == 'true'
             # elif setting_obj['type'] == 'path':
             #     setting[varobj] = is_path(setting_obj['value'])
             else:
