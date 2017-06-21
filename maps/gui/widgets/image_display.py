@@ -1,6 +1,7 @@
+from kivy.uix.boxlayout import BoxLayout
 from kivy.uix.image import Image
 from kivy.graphics.texture import Texture
-from kivy.properties import StringProperty, NumericProperty
+from kivy.properties import StringProperty, NumericProperty, ObjectProperty, BooleanProperty
 
 from maps.settings import setting
 
@@ -8,37 +9,58 @@ import glob
 import os
 import cv2
 
-from maps.helpers.gui_modules import create_image_overlay, load_image_sequence
+from maps.helpers.gui_modules import create_image_overlay, create_blank_image, load_image_sequence
 
 
-class FrameDisplay(Image):
-    path = StringProperty('')
-    frame_count = NumericProperty(50)
+class FrameSelectionWidget(BoxLayout):
+    frame = ObjectProperty()
+    frame_selector = ObjectProperty()
+    slider = ObjectProperty()
+    frame_start = NumericProperty()
+    frame_count = NumericProperty()
+    frame_pathlist = StringProperty()
+    frame_select = NumericProperty()
+    overlay = BooleanProperty(False)
+    display_blank = BooleanProperty(False)
 
-    def __init__(self, **kwargs):
-        super(FrameDisplay, self).__init__(**kwargs)
+    def __init__(self, frame_start=1, overlay_type='rectangle', **kwargs):
+        super(FrameSelectionWidget, self).__init__(**kwargs)
+        self.img_paths = []
+        self.img_seq = []
+        self.frame_start = frame_start
+        self.frame_count = len(self.img_paths)
+        self.overlay_type = overlay_type
+        self.overlay_data = {}
 
-    def load_frames(self):
-        print setting
-        self.path = setting['bf_path']
-        self.frame_count = setting['fphb']
-        self.path_list = glob.glob(os.path.join(self.path, '*.tif'))[:self.frame_count]
-        self.selection_window = [0, 0]
-        self.img_seq = load_image_sequence(self.path_list)
-
-    def update(self, dt):
-        frame = create_image_overlay(self.img_seq[int(self.parent.parent.img_select)])
+    def update(self, *args):
+        if self.display_blank:
+            self.frame_select = 0
+            frame = create_blank_image(400, 600)
+        else:
+            self.frame_select = int(
+                self.frame_selector.min + self.frame_selector.value
+            )
+            frame = create_image_overlay(self.img_seq[self.frame_select])
         frame = cv2.flip(frame, 0)
         buf = frame.tostring()
-        # print buf
         image_texture = Texture.create(
             size=(frame.shape[1], frame.shape[0]), colorfmt='bgr')
         image_texture.blit_buffer(buf, colorfmt='bgr', bufferfmt='ubyte')
-        self.texture = image_texture
-        # TODO: Draw rectangle from self.parent.selected_region here
+        self.frame.texture = image_texture
+
+    def load_frames(self, img_paths, frame_index_start=1):
+        if img_paths is not None:
+            self.img_seq = load_image_sequence(img_paths)
+        else:
+            self.img_seq = []
+        self.frame_count = len(self.img_seq)
+        self.frame_start = frame_index_start
+
+    # def load_blank(self):
+    #     pass
 
 
-class PlotDisplay(Image):
+class PlotDisplay(BoxLayout):
     # plot = ObjectProperty()
 
     def __init__(self, **kwargs):

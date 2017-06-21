@@ -32,8 +32,16 @@ def rectangular_select(event, x, y, flags, param):
         rect_data['pt2'] = (x, y)
 
 
-def lock_selection(*arg, **kwargs):
-    pass
+def create_blank_image(height, width, imgtype='white'):
+    # TODO Check if more efficient to create seoarate frame for each case
+    frame = np.ones((height, width, 3), np.uint8)
+
+    if imgtype == 'white':
+        frame = frame * 255
+    else:
+        frame = frame * 0
+
+    return frame
 
 
 def create_image_overlay(img, overlay_type=None, overlay_data=None, normalize=True):

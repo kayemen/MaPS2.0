@@ -133,7 +133,7 @@
 
         Button:
             id: load_json
-            text: "Load data from json file"
+            text: "Load JSON setting file"
             on_release: root.json_load_popup()
 
         Label:
@@ -141,18 +141,17 @@
 
         Button:
             id: reload_button
-            text: "Reload all settings"
+            text: "Apply settings"
             on_release: root.reload_settings()
 
     # Label:
     #     text: ""
 
 # Widget to select frame with largest heart size and select bounding region
-<FrameSelectionView>:
-    img_frame: frame
-    slider: slider
-    img_select: slider.value
+<ReferenceFrameSelectionView>:
+    frame_window: frame
     frame_select: frame_select
+    img_select: frame.frame_select
     region_select: region_select
 
     orientation: "vertical"
@@ -165,29 +164,25 @@
     BoxLayout:
         # size_hint: 1, 0.06
 
-        FrameDisplay:
+        FrameSelectionWidget:
             id: frame
             size_hint: 1, 1
 
-        Label:
+        Button:
             id: help_text
-            text: "Drag the slider to move between the frames. Press select frame to open the region selection window. Press select region to mark the coordinates of the selected region"
-            valign: "bottom"
+            text: "Drag the slider to move between the frames. \nPress select frame to open the region selection window. \nPress select region to mark the coordinates of the selected region. \nClick here for more details"
             size_hint: 0.4, 1
+            padding: 5, 5
+            spacing: 5, 5
+            valign: "top"
             text_size: self.width, None
             height: self.texture_size[1]
 
     BoxLayout:
         size_hint: 1, 0.05
 
-        Slider:
-            id: slider
-            min: 0
-            max: frame.frame_count - 1
-
         Label:
-            text: "Frame # %d" % root.img_select
-            size_hint: 0.15, 1
+            size_hint: 1, 1
 
         Button:
             id: frame_select
@@ -204,7 +199,10 @@
 
 # Widget to process kymograph and identify bad zooks
 <ZookPruningView>:
-    frame: frame
+    img_frame: img_frame
+    kymo_plot: kymo_plot
+    kymo_sel: kymo_selection
+    zook_sel: bad_zook_tree
 
     orientation: "vertical"
 
@@ -221,62 +219,135 @@
             size_hint: 1, 0.06
 
             # TODO: File loader to go here
-            TextInput:
-                size_hint: 0.3, 1
-                id: fileview_kymo
-                text: "Loading file path here"
+            Spinner:
+                # size_hint: 1, 1
+                id: kymo_selection
+                text: 'Select Kymograph for processing'
 
             # Process selected file
             Button:
                 id: load
                 text: "Process"
                 size_hint: None, 1
+                on_release: root.process_kymograph()
 
         # Middle row, tree of bad zooks and plot of zooks
         BoxLayout:
-            # TreeView
-            TextInput:
-                size_hint: 1, 1
+            # Frame view
+            BoxLayout:
+                # size_hint: 1, 1
+                orientation: 'vertical'
+
+                FrameSelectionWidget:
+                    id: img_frame
+                    size_hint: 1, 1
+
+                Button:
+                    id: help_text
+                    size_hint: 1, 0.3
+                    text: "Help text here. Click for more info"
+                    valign: "top"
+                    text_size: self.width, self.height
+                    # height: self.texture_size[1]
 
             BoxLayout:
                 orientation: 'vertical'
-                size_hint: 0.3, 1
-                padding: 5
 
-                Label:
-                    size_hint: 1, 0.6
+                PlotDisplay:
+                    id: kymo_plot
+                    size_hint: 1, 1
 
-                Button:
-                    id: view
-                    text: "Zook list"
-                    size_hint: None, 0.1
+                BoxLayout:
+                    # orientation: 'vertical'
+                    size_hint: 1, 0.15
+                    padding: 5
 
-                Button:
-                    id: keep
-                    text: "Keep zook"
-                    size_hint: None, 0.1
+                    # Label:
+                    #     size_hint: 1, 0.6
 
-                Button:
-                    id: disc
-                    text: "Discard zook"
-                    size_hint: None, 0.1
+                    Button:
+                        id: prev_zook
+                        text: "<"
+                        on_release: prev_zook_callback()
+                        size_hint: 0.2, 1
 
-                Button:
-                    id: disc_all
-                    text: "Discard all"
-                    size_hint: None, 0.1
+                    Button:
+                        id: keep
+                        text: "Keep zook"
+                        on_release: keep_zook_callback()
+                        # size_hint: None, 1
 
-                Label:
-                    size_hint: 1, 0.6
+                    Button:
+                        id: disc
+                        text: "Discard zook"
+                        on_release: discard_zook_callback()
+                        # size_hint: None, 1
 
-            PlotDisplay:
-                id: frame
-                size_hint: 1, 1
+                    Button:
+                        id: disc_all
+                        text: "Discard all"
+                        on_release: discard_all_callback()
+                        # size_hint: None, 1
+
+                    Button:
+                        id: next_zook
+                        text: ">"
+                        on_release: next_zook_callback()
+                        size_hint: 0.2, 1
+                    # Label:
+                    #     size_hint: 1, 0.6
+
+                ScrollView:
+                    size_hint: 1, 1
+
+                    TreeView:
+                        id: bad_zook_tree
+                        size_hint: 1, None
+                        root_options:{'text': 'Bad Zooks'}
+                        hide_root: False
+                        indent_level: 4
+                        # size_hint: 1, 1
 
 
 # Widget declarations
-# <FrameDisplay>:
-#
+<FrameSelectionWidget>:
+    frame: img_disp
+    frame_selector: frame_selector
+
+    orientation: 'vertical'
+
+    Image:
+        id: img_disp
+        size_hint: 1, 1
+
+    BoxLayout:
+        size_hint: 1, 0.05
+
+        Slider:
+            id: frame_selector
+            size_hint_x: 0.8
+            min: 0
+            max: self.parent.parent.frame_count - 1
+
+        Label:
+            id:  frame_disp
+            size_hint_x: 0.2
+            text: 'Frame: %5d' % int(self.parent.parent.frame_start + frame_selector.value)
+
+<PlotDisplay>:
+    plot_window: plot_window
+    plot_selection: plot_selection
+
+    Label:
+        id: plot_window
+        size_hint: 1, 0.9
+        text: 'Plot window'
+
+    Spinner:
+        id: plot_selection
+        size_hint: 1, 0.1
+        text: 'plot selection'
+
 <LoadDialog>:
     BoxLayout:
         size: root.size

@@ -18,7 +18,8 @@ from kivy.uix.image import Image
 from maps import settings
 from maps.helpers.gui_modules import load_image_sequence, create_image_overlay, rectangular_select, max_heartsize_frame, get_rect_params
 from maps.helpers.misc import pickle_object
-from maps.gui.widgets.image_display import FrameDisplay
+
+from maps.gui.widgets.image_display import FrameSelectionWidget
 from maps.gui.widgets.settings_widgets import FileChooserWidget, SettingRow
 
 import json
@@ -55,8 +56,8 @@ class InterfaceManager(BoxLayout):
         self.InputParametersView = InputParametersView()
         self.view_order = [
             self.InputParametersView,
-        #     self.FrameSelectionView,
-        #     self.ZookPruningView
+            #     self.ReferenceFrameSelectionView,
+            #     self.ZookPruningView
         ]
         self.current_view = 0
         settings.reload_current_settings()
@@ -73,12 +74,12 @@ class InterfaceManager(BoxLayout):
     #     self.add_widget(self.InputParametersView)
 
     def load_widgets(self):
-        self.FrameSelectionView = FrameSelectionView()
+        self.ReferenceFrameSelectionView = ReferenceFrameSelectionView()
         self.ZookPruningView = ZookPruningView()
 
         self.view_order = [
             self.InputParametersView,
-            self.FrameSelectionView,
+            self.ReferenceFrameSelectionView,
             self.ZookPruningView
         ]
 
@@ -90,7 +91,8 @@ class InterfaceManager(BoxLayout):
         # self.progress_bar.value_normalized = float(self.current_view) / len(self.view_order)
 
     def load_next_screen(self):
-        self.load_widgets()
+        if self.current_view == 0:
+            self.load_widgets()
         if self.current_view < len(self.view_order) - 1:
             self.load_screen((self.current_view + 1))
             # self.progress_bar.value_normalized = float(self.current_view) / len(self.view_order)
@@ -110,8 +112,10 @@ class InterfaceManager(BoxLayout):
             pass
         else:
             self.current_view = view_id
+            self.screen_area.children[0].widget_inactive()
             self.screen_area.clear_widgets()
             self.screen_area.add_widget(self.view_order[self.current_view])
+            self.screen_area.children[0].widget_active()
 
     def on_current_view(self, instance, value):
         for index in range(len(self.view_order)):
@@ -159,6 +163,12 @@ class InputParametersView(BoxLayout):
         # Sets the height of children inside the gridlayout to 35 pixels
         self.screen.height = len(self.parameters) * 35
 
+    def widget_active(self):
+        pass
+
+    def widget_inactive(self):
+        pass
+
     def load_settings_json(self):
         try:
             self.parameters = json.load(open(self.json_path))
@@ -182,27 +192,49 @@ class InputParametersView(BoxLayout):
         pop_content = BoxLayout(orientation='vertical')
         pop_content.add_widget(FileChooserWidget(dirselect=False))
 
-        self.json_pop = Popup(title="Load new settings from json file", content=pop_content, size_hint=(0.5, 0.2))
-        pop_content.add_widget(Button(text='OK', on_release=self.json_pop.dismiss))
+        self.json_pop = Popup(
+            title="Load new settings from json file",
+            content=pop_content,
+            size_hint=(0.5, 0.2)
+        )
+        pop_content.add_widget(
+            Button(text='OK', on_release=self.json_pop.dismiss)
+        )
         self.json_pop.bind(on_dismiss=get_json_path)
         self.json_pop.open()
 
     def load_setting_widgets(self):
         for setting_obj in self.parameters:
-            self.setting_list[setting_obj['varname']] = self.create_setting_layout(**setting_obj)
-            self.screen.add_widget(self.setting_list[setting_obj['varname']])
+            if not setting_obj['hidden']:
+                new_setting_layout = self.create_setting_layout(**setting_obj)
+                self.setting_list[setting_obj['varname']] = new_setting_layout
+                self.screen.add_widget(self.setting_list[setting_obj['varname']])
 
     def create_setting_layout(self, varname, description, type, helptext=None, value=None, hidden=False):
         setting_layout = SettingRow(size_hint=(1, 0.06))
         setting_layout.add_widget(Label(text=description, size_hint_x=0.4))
         if type == 'path':
-            setting_layout.add_widget(FileChooserWidget(size_hint_x=0.6, dirselect=True))
+            setting_layout.add_widget(FileChooserWidget(
+                init_text=value,
+                size_hint_x=0.6,
+                dirselect=True
+            ))
         elif type == 'file':
-            setting_layout.add_widget(FileChooserWidget(size_hint_x=0.6, dirselect=False))
+            setting_layout.add_widget(FileChooserWidget(
+                init_text=value,
+                size_hint_x=0.6,
+                dirselect=False
+            ))
         elif type == 'str':
-            setting_layout.add_widget(TextInput(text=str(value), size_hint_x=0.6))
+            setting_layout.add_widget(TextInput(
+                text=str(value),
+                size_hint_x=0.6
+            ))
         elif type == 'int' or type == 'float':
-            setting_layout.add_widget(TextInput(text=str(value), size_hint_x=0.6))
+            setting_layout.add_widget(TextInput(
+                text=str(value),
+                size_hint_x=0.6
+            ))
 
         return setting_layout
 
@@ -235,32 +267,42 @@ class InputParametersView(BoxLayout):
         return True
 
 
-class FrameSelectionView(BoxLayout):
-    img_frame = ObjectProperty()
-    slider = ObjectProperty()
+class ReferenceFrameSelectionView(BoxLayout):
+    frame_window = ObjectProperty()
     img_select = NumericProperty()
     frame_select = ObjectProperty()
     region_select = ObjectProperty()
 
-    def __init__(self, fps=30, **kwargs):
-        super(FrameSelectionView, self).__init__(**kwargs)
-        Clock.schedule_interval(self.img_frame.update, 1.0 / fps)
+    def __init__(self, fps=20, **kwargs):
+        super(ReferenceFrameSelectionView, self).__init__(**kwargs)
+        self.fps = fps
         self.selected_frame = None
         self.selected_region = None
-        self.img_frame.load_frames()
+        self.frame_window.frame_count = settings.setting['fphb']
+        img_paths = glob.glob(
+            os.path.join(settings.setting['bf_path'], '*.tif')
+        )[:self.frame_window.frame_count]
+        self.frame_window.load_frames(img_paths)
+
+    def widget_active(self):
+        self.refresh = Clock.schedule_interval(self.frame_window.update, 1.0 / self.fps)
+
+    def widget_inactive(self):
+        self.refresh.cancel()
 
     def mark_frame(self):
-        self.selected_frame = int(self.img_select)
+        self.selected_frame = int(self.frame_window.frame_select)
         self.selected_region = None
-        threading.Thread(target=max_heartsize_frame, args=(self.img_frame.img_seq[self.selected_frame], )).start()
+        sel_frame = self.frame_window.img_seq[self.selected_frame]
+        threading.Thread(
+            target=max_heartsize_frame,
+            args=(sel_frame, )
+        ).start()
         self.region_select.disabled = False
-        # print params
 
     def mark_region(self):
         cv2.destroyAllWindows()
         self.selected_region = get_rect_params()
-        print 'Frame:', self.selected_frame
-        print 'Region:', self.selected_region
         data = [
             ('frame', self.selected_frame),
             ('x_end', self.selected_region['x_end']),
@@ -269,6 +311,7 @@ class FrameSelectionView(BoxLayout):
             ('width', self.selected_region['width']),
         ]
         pickle_object(data, file_name='corr_window.csv', dumptype='csv')
+        print '\n'.join(['%s:%d' % (i[0], i[1]) for i in data])
 
     def on_img_select(self, instance, value):
         # Disabling the region selection button till frame is finalized
