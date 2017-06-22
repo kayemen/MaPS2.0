@@ -13,6 +13,7 @@ from kivy.clock import Clock
 from kivy.graphics import Rectangle, Color, Line
 from kivy.graphics.texture import Texture
 from kivy.uix.image import Image
+from kivy.core.window import Window
 
 # from ..gui_modules import load_image_sequence, create_image_overlay
 from maps import settings
@@ -119,6 +120,8 @@ class InterfaceManager(BoxLayout):
             self.screen_area.clear_widgets()
             self.screen_area.add_widget(self.view_order[self.current_view])
             self.screen_area.children[0].widget_active()
+            print self.view_order[1].frame_window
+            print self.view_order[2].img_frame
 
     def on_current_view(self, instance, value):
         for index in range(len(self.view_order)):
@@ -287,8 +290,24 @@ class ReferenceFrameSelectionView(BoxLayout):
         )[:self.frame_window.frame_count]
         self.frame_window.load_frames(img_paths)
 
+    def _keyboard_closed(self):
+        self._keyboard.unbind(on_key_down=self._on_keyboard_down)
+        self._keyboard = None
+
+    def _on_keyboard_down(self, keyboard, keycode, text, modifiers):
+        if not len(modifiers):
+            if keycode[1] == 'right':
+                if self.frame_window.frame_selector.value < self.frame_window.frame_selector.max:
+                    self.frame_window.frame_selector.value = self.frame_window.frame_selector.value + 1
+            elif keycode[1] == 'left':
+                if self.frame_window.frame_selector.value > self.frame_window.frame_selector.min:
+                    self.frame_window.frame_selector.value -= 1
+        return True
+
     def widget_active(self):
         self.refresh = Clock.schedule_interval(self.frame_window.update, 1.0 / self.fps)
+        self._keyboard =  Window.request_keyboard(self._keyboard_closed, self)
+        self._keyboard.bind(on_key_down=self._on_keyboard_down)
 
     def widget_inactive(self):
         self.refresh.cancel()
@@ -368,8 +387,24 @@ class ZookPruningView(BoxLayout):
 
         self.zook_sel.bind(minimum_height=self.zook_sel.setter('height'))
 
+    def _keyboard_closed(self):
+        self._keyboard.unbind(on_key_down=self._on_keyboard_down)
+        self._keyboard = None
+
+    def _on_keyboard_down(self, keyboard, keycode, text, modifiers):
+        if not len(modifiers):
+            if keycode[1] == 'right':
+                if self.img_frame.frame_selector.value < self.img_frame.frame_selector.max:
+                    self.img_frame.frame_selector.value = self.img_frame.frame_selector.value + 1
+            elif keycode[1] == 'left':
+                if self.img_frame.frame_selector.value > self.img_frame.frame_selector.min:
+                    self.img_frame.frame_selector.value -= 1
+        return True
+
     def widget_active(self):
         self.refresh = Clock.schedule_interval(self.img_frame.update, 1.0 / self.fps)
+        self._keyboard =  Window.request_keyboard(self._keyboard_closed, self)
+        self._keyboard.bind(on_key_down=self._on_keyboard_down)
 
     def widget_inactive(self):
         self.refresh.cancel()
@@ -388,7 +423,8 @@ class ZookPruningView(BoxLayout):
                     kymo_path=self.kymo_paths[self.selected_kymo],
                     frame_count=settings.setting['bf_framecount'],
                     phase_img_path=settings.setting['bf_path'],
-                    use_old=settings.setting['use_pkl_zstamp'],
+                    use_old=True,
+                    # use_old=settings.setting['use_pkl_zstamp'],
                     datafile_name='z_stamp_opt_%s.pkl' % (self.selected_kymo[:-4])
                 )
                 self.kymo_names[self.selected_kymo] = True
