@@ -269,30 +269,35 @@
                     Button:
                         id: prev_zook
                         text: "<"
+                        disabled: root.selected_zook == -1
                         on_release: root.prev_zook_callback()
                         size_hint: 0.2, 1
 
                     Button:
                         id: keep
                         text: "Keep zook"
+                        disabled: root.selected_zook == -1
                         on_release: root.keep_zook_callback()
                         # size_hint: None, 1
 
                     Button:
                         id: disc
                         text: "Discard zook"
+                        disabled: root.selected_zook == -1
                         on_release: root.discard_zook_callback()
                         # size_hint: None, 1
 
                     Button:
                         id: disc_all
                         text: "Discard all"
+                        disabled: root.selected_zook == -1
                         on_release: root.discard_all_callback()
                         # size_hint: None, 1
 
                     Button:
                         id: next_zook
                         text: ">"
+                        disabled: root.selected_zook == -1
                         on_release: root.next_zook_callback()
                         size_hint: 0.2, 1
                     # Label:

@@ -302,7 +302,7 @@ class ReferenceFrameSelectionView(BoxLayout):
 
     def widget_active(self):
         self.refresh = Clock.schedule_interval(self.frame_window.update, 1.0 / self.fps)
-        self._keyboard =  Window.request_keyboard(self._keyboard_closed, self)
+        self._keyboard = Window.request_keyboard(self._keyboard_closed, self)
         self._keyboard.bind(on_key_down=self._on_keyboard_down)
 
     def widget_inactive(self):
@@ -375,6 +375,8 @@ class ZookPruningView(BoxLayout):
         self.img_frame.frame_count = settings.setting['ZookZikPeriod']
         self.img_frame.display_blank = True
         self.bad_zooks = []
+        self.bad_zooks_list = []
+        self.discarded_zooks_list = []
 
         def show_display(spinner, text):
             if text != self.selected_kymo:
@@ -402,7 +404,7 @@ class ZookPruningView(BoxLayout):
 
     def widget_active(self):
         self.refresh = Clock.schedule_interval(self.img_frame.update, 1.0 / self.fps)
-        self._keyboard =  Window.request_keyboard(self._keyboard_closed, self)
+        self._keyboard = Window.request_keyboard(self._keyboard_closed, self)
         self._keyboard.bind(on_key_down=self._on_keyboard_down)
 
     def widget_inactive(self):
@@ -413,13 +415,14 @@ class ZookPruningView(BoxLayout):
             self.refresh.cancel()
             if self.kymo_names[self.selected_kymo]:
                 print 'Already processed this kymo'
-                self.selected_zook = -1
-                self.selected_frame = -1
+                self.z_stamps, _, residues, self.bad_zooks = z_stamping_step(
+                    kymo_path=self.kymo_paths[self.selected_kymo],
+                    frame_count=settings.setting['bf_framecount'],
+                    phase_img_path=settings.setting['bf_path'],
+                    use_old=True,
+                    datafile_name='z_stamp_opt_%s.pkl' % (self.selected_kymo[:-4])
+                )
             else:
-                self.selected_zook = -1
-                self.selected_frame = -1
-                self.plot_window.clear_plots()
-
                 self.z_stamps, _, residues, self.bad_zooks = z_stamping_step(
                     kymo_path=self.kymo_paths[self.selected_kymo],
                     frame_count=settings.setting['bf_framecount'],
@@ -428,15 +431,21 @@ class ZookPruningView(BoxLayout):
                     # use_old=settings.setting['use_pkl_zstamp'],
                     datafile_name='z_stamp_opt_%s.pkl' % (self.selected_kymo[:-4])
                 )
-                self.kymo_names[self.selected_kymo] = True
-                self.bad_zooks_to_tree()
 
-                self.plot_window.add_plotting_method('Residues', line_plot)
-                self.plot_window.add_plotting_method('ZStamps', line_plot)
-                # self.plot_window.add_plotting_method('Bad zook locations', scatter_plot)
+            self.selected_zook = -1
+            self.selected_frame = -1
+            self.discarded_zooks_list = []
+            self.plot_window.clear_plots()
 
-                self.plot_window.update_plot_data('Residues', residues)
-                self.plot_window.update_plot_data('ZStamps', self.z_stamps)
+            self.kymo_names[self.selected_kymo] = True
+            self.bad_zooks_to_tree()
+
+            self.plot_window.add_plotting_method('Residues', line_plot)
+            self.plot_window.add_plotting_method('ZStamps', line_plot)
+            # self.plot_window.add_plotting_method('Bad zook locations', scatter_plot)
+
+            self.plot_window.update_plot_data('Residues', residues)
+            self.plot_window.update_plot_data('ZStamps', self.z_stamps)
 
             self.refresh = Clock.schedule_interval(self.img_frame.update, 1.0 / self.fps)
 
@@ -469,6 +478,8 @@ class ZookPruningView(BoxLayout):
 
     # Zook tree view methods
     def clear_zook_tree(self):
+        self.bad_zooks_list = []
+
         for node in self.zook_sel.root.nodes[:]:
             self.zook_sel.remove_node(node)
 
@@ -476,6 +487,7 @@ class ZookPruningView(BoxLayout):
         self.clear_zook_tree()
         for bad_zook in self.bad_zooks:
             zook_no = bad_zook[0]
+            self.bad_zooks_list.append(zook_no)
             zook_node = self.zook_sel.add_node(
                 TreeViewLabel(text='Zook#%d' % (zook_no))
             )
@@ -496,6 +508,8 @@ class ZookPruningView(BoxLayout):
 
         if len(self.zook_sel.root.nodes) > 0:
             self.zook_sel.select_node(self.zook_sel.root.nodes[0])
+        else:
+            self.process_discarded_zooks()
 
     # Tree view callbacks
     def zook_node_callback(self, zook_node, selected):
@@ -509,21 +523,39 @@ class ZookPruningView(BoxLayout):
                 self.selected_zook = zook_no
             self.selected_frame = int(frame_node.text.replace('Frame#', ''))
 
-    # TODO: Button callbacks
+    # Button callbacks
     def prev_zook_callback(self):
-        pass
+        prev_zook = (self.bad_zooks_list.index(self.selected_zook) - 1) % len(self.bad_zooks_list)
+        self.zook_sel.deselect_node()
+        self.zook_sel.select_node(self.zook_sel.root.nodes[prev_zook])
 
     def next_zook_callback(self):
-        pass
+        next_zook = (self.bad_zooks_list.index(self.selected_zook) + 1) % len(self.bad_zooks_list)
+        self.zook_sel.deselect_node()
+        self.zook_sel.select_node(self.zook_sel.root.nodes[next_zook])
 
     def keep_zook_callback(self):
-        pass
+        curr_zook = self.bad_zooks_list.index(self.selected_zook)
+        self.bad_zooks.pop(curr_zook)
+        self.bad_zooks_list.pop(curr_zook)
+        self.bad_zooks_to_tree()
 
     def discard_zook_callback(self):
-        pass
+        curr_zook = self.bad_zooks_list.index(self.selected_zook)
+        self.discarded_zooks_list.append(self.bad_zooks.pop(curr_zook))
+        # self.bad_zooks.pop(curr_zook)
+        self.bad_zooks_list.pop(curr_zook)
+        self.bad_zooks_to_tree()
 
     def discard_all_callback(self):
-        pass
+        self.discarded_zooks_list.extend(self.bad_zooks)
+        self.bad_zooks = []
+        self.bad_zooks_list = []
+        self.bad_zooks_to_tree()
+
+    def process_discarded_zooks(self):
+        # Write the final z stamp after discarding bad zooks
+        print self.discarded_zooks_list
 
     def validate_step(self):
         return True
