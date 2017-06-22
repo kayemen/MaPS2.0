@@ -22,7 +22,7 @@ from maps.core.z_stamping import z_stamping_step
 
 from maps.helpers.gui_modules import load_image_sequence, create_image_overlay, rectangular_select, max_heartsize_frame, get_rect_params
 from maps.helpers.misc import pickle_object
-
+from maps.helpers.plotting_module import line_plot
 from maps.gui.widgets.image_display import FrameSelectionWidget
 from maps.gui.widgets.settings_widgets import FileChooserWidget, SettingRow
 
@@ -60,8 +60,6 @@ class InterfaceManager(BoxLayout):
         self.InputParametersView = InputParametersView()
         self.view_order = [
             self.InputParametersView,
-            #     self.ReferenceFrameSelectionView,
-            #     self.ZookPruningView
         ]
         self.current_view = 0
         settings.reload_current_settings()
@@ -120,8 +118,6 @@ class InterfaceManager(BoxLayout):
             self.screen_area.clear_widgets()
             self.screen_area.add_widget(self.view_order[self.current_view])
             self.screen_area.children[0].widget_active()
-            print self.view_order[1].frame_window
-            print self.view_order[2].img_frame
 
     def on_current_view(self, instance, value):
         for index in range(len(self.view_order)):
@@ -351,7 +347,7 @@ class ReferenceFrameSelectionView(BoxLayout):
 
 class ZookPruningView(BoxLayout):
     img_frame = ObjectProperty()
-    kymo_plot = ObjectProperty()
+    plot_window = ObjectProperty()
     kymo_sel = ObjectProperty()
     zook_sel = ObjectProperty()
     selected_zook = NumericProperty(-1)
@@ -359,6 +355,9 @@ class ZookPruningView(BoxLayout):
 
     def __init__(self, fps=20, **kwargs):
         super(ZookPruningView, self).__init__(**kwargs)
+        # No idea why this is needed
+        self.plot_window.initialize_plots()
+
         self.fps = fps
         self.img_frame.load_frames(None)
         kymo_paths = glob.glob(
@@ -419,7 +418,9 @@ class ZookPruningView(BoxLayout):
             else:
                 self.selected_zook = -1
                 self.selected_frame = -1
-                self.z_stamps, _, self.residues, self.bad_zooks = z_stamping_step(
+                self.plot_window.clear_plots()
+
+                self.z_stamps, _, residues, self.bad_zooks = z_stamping_step(
                     kymo_path=self.kymo_paths[self.selected_kymo],
                     frame_count=settings.setting['bf_framecount'],
                     phase_img_path=settings.setting['bf_path'],
@@ -429,14 +430,22 @@ class ZookPruningView(BoxLayout):
                 )
                 self.kymo_names[self.selected_kymo] = True
                 self.bad_zooks_to_tree()
-            self.refresh = Clock.schedule_interval(self.img_frame.update, 1.0 / self.fps)
 
+                self.plot_window.add_plotting_method('Residues', line_plot)
+                self.plot_window.add_plotting_method('ZStamps', line_plot)
+                # self.plot_window.add_plotting_method('Bad zook locations', scatter_plot)
+
+                self.plot_window.update_plot_data('Residues', residues)
+                self.plot_window.update_plot_data('ZStamps', self.z_stamps)
+
+            self.refresh = Clock.schedule_interval(self.img_frame.update, 1.0 / self.fps)
 
     # FrameSelectionWidget modification functions
     def load_zook_frames(self, widget, zook_no):
         if zook_no == -1:
             # Load blank frame
             self.img_frame.display_blank = True
+            self.plot_window.plot_selection.text = 'Select plot'
         else:
             self.img_frame.display_blank = False
             start_frame = zook_no * settings.setting['ZookZikPeriod']
@@ -449,6 +458,8 @@ class ZookPruningView(BoxLayout):
             if self.selected_frame == -1:
                 self.selected_frame = 0
 
+            self.plot_window.plot_selection.text = 'Zook#%d' % zook_no
+
     def move_slider_to_frame(self, widget, frame_no):
         if frame_no == -1:
             # Do nothing
@@ -458,23 +469,33 @@ class ZookPruningView(BoxLayout):
 
     # Zook tree view methods
     def clear_zook_tree(self):
-        node_list = self.zook_sel.root.nodes[:]
-        for node in node_list:
+        for node in self.zook_sel.root.nodes[:]:
             self.zook_sel.remove_node(node)
 
     def bad_zooks_to_tree(self):
         self.clear_zook_tree()
         for bad_zook in self.bad_zooks:
+            zook_no = bad_zook[0]
             zook_node = self.zook_sel.add_node(
-                TreeViewLabel(text='Zook#%d' % (bad_zook[0]))
+                TreeViewLabel(text='Zook#%d' % (zook_no))
             )
             zook_node.bind(is_selected=self.zook_node_callback)
+            self.plot_window.add_plotting_method('Zook#%d' % (zook_no), line_plot)
+
+            zook_start = max((zook_no - 1) * settings.setting['ZookZikPeriod'], 0)
+            zook_end = min((zook_no + 2) * settings.setting['ZookZikPeriod'], len(self.z_stamps))
+
+            self.plot_window.update_plot_data('Zook#%d' % (zook_no), self.z_stamps[zook_start:zook_end])
+
             for bad_frame in bad_zook[2]:
                 frame_node = self.zook_sel.add_node(
                     TreeViewLabel(text='Frame#%d' % (bad_frame)),
                     zook_node
                 )
                 frame_node.bind(is_selected=self.frame_node_callback)
+
+        if len(self.zook_sel.root.nodes) > 0:
+            self.zook_sel.select_node(self.zook_sel.root.nodes[0])
 
     # Tree view callbacks
     def zook_node_callback(self, zook_node, selected):
