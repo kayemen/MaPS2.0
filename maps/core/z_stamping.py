@@ -5,7 +5,6 @@ if __name__ == '__main__':
 import numpy as np
 import skimage.external.tifffile as tff
 from scipy import stats
-import matplotlib.pyplot as plt
 from skimage.transform import resize
 
 from maps.helpers.tiffseriesimport import importtiff, writetiff
@@ -472,8 +471,6 @@ def detect_bad_zooks(residues, maxima_points, minima_points, slopes):
     OUTPUTS:
         bad_zooks(list): list of bad_zook tuples. Each bad zook tuple consists of the zook#, the shift value of deviant shifts and the location of deviant shifts
     '''
-    plot_hist = False
-
     bad_zooks = []
 
     sdev = stats.tstd(residues)
@@ -495,21 +492,6 @@ def detect_bad_zooks(residues, maxima_points, minima_points, slopes):
 
         if is_bad_zook:
             bad_zooks.append((zook, bad_shifts, bad_shift_loc))
-
-        # Set to true to plot histogram and store for each bad zook
-        if is_bad_zook and plot_hist:
-            hist, bins = np.histogram(zook_residue, bins=100)
-            width = 0.8 * (bins[1] - bins[0])
-            center = (bins[:-1] + bins[1:]) / 2
-            plt.bar(center, hist, align='center', width=width)
-            plt.savefig(
-                os.path.join(
-                    setting['data_dump'],
-                    'Hist vals\\%d_per\\zook%d.png' % (int(c * 100), zook)
-                ),
-                bbox_inches='tight'
-            )
-            plt.gcf().clear()
 
     return bad_zooks
 
@@ -551,6 +533,7 @@ def z_stamping_step(kymo_path, frame_count, phase_img_path, use_old=False, dataf
 
 
 if __name__ == '__main__':
+    import matplotlib.pyplot as plt
     from maps.helpers.logging_config import logger_config
     logging.config.dictConfig(logger_config)
 
@@ -588,3 +571,19 @@ if __name__ == '__main__':
 
     plt.plot(res)
     plt.show()
+
+
+    # # TODO: Set to true to plot histogram and store for each bad zook
+    # if is_bad_zook and plot_hist:
+    #     hist, bins = np.histogram(zook_residue, bins=100)
+    #     width = 0.8 * (bins[1] - bins[0])
+    #     center = (bins[:-1] + bins[1:]) / 2
+    #     plt.bar(center, hist, align='center', width=width)
+    #     plt.savefig(
+    #         os.path.join(
+    #             setting['data_dump'],
+    #             'Hist vals\\%d_per\\zook%d.png' % (int(c * 100), zook)
+    #         ),
+    #         bbox_inches='tight'
+    #     )
+    #     plt.gcf().clear()

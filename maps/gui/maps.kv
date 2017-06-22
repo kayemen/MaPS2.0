@@ -200,7 +200,7 @@
 # Widget to process kymograph and identify bad zooks
 <ZookPruningView>:
     img_frame: img_frame
-    kymo_plot: kymo_plot
+    plot_window: kymo_plot
     kymo_sel: kymo_selection
     zook_sel: bad_zook_tree
 
@@ -233,6 +233,8 @@
 
         # Middle row, tree of bad zooks and plot of zooks
         BoxLayout:
+            padding: 5
+            spacing: 5
             # Frame view
             BoxLayout:
                 # size_hint: 1, 1
@@ -258,7 +260,6 @@
                     size_hint: 1, 1
 
                 BoxLayout:
-                    # orientation: 'vertical'
                     size_hint: 1, 0.15
                     padding: 5
 
@@ -268,31 +269,31 @@
                     Button:
                         id: prev_zook
                         text: "<"
-                        on_release: prev_zook_callback()
+                        on_release: root.prev_zook_callback()
                         size_hint: 0.2, 1
 
                     Button:
                         id: keep
                         text: "Keep zook"
-                        on_release: keep_zook_callback()
+                        on_release: root.keep_zook_callback()
                         # size_hint: None, 1
 
                     Button:
                         id: disc
                         text: "Discard zook"
-                        on_release: discard_zook_callback()
+                        on_release: root.discard_zook_callback()
                         # size_hint: None, 1
 
                     Button:
                         id: disc_all
                         text: "Discard all"
-                        on_release: discard_all_callback()
+                        on_release: root.discard_all_callback()
                         # size_hint: None, 1
 
                     Button:
                         id: next_zook
                         text: ">"
-                        on_release: next_zook_callback()
+                        on_release: root.next_zook_callback()
                         size_hint: 0.2, 1
                     # Label:
                     #     size_hint: 1, 0.6
@@ -334,19 +335,23 @@
             size_hint_x: 0.2
             text: 'Frame: %5d' % int(self.parent.parent.frame_start + frame_selector.value)
 
+
 <PlotDisplay>:
-    plot_window: plot_window
+    plot_area: plot_area
     plot_selection: plot_selection
 
-    Label:
-        id: plot_window
+    orientation: 'vertical'
+
+    BoxLayout:
+        id: plot_area
+        orientation: 'vertical'
         size_hint: 1, 0.9
-        text: 'Plot window'
 
     Spinner:
         id: plot_selection
         size_hint: 1, 0.1
-        text: 'plot selection'
+        text: 'Select plot'
+
 
 <LoadDialog>:
     BoxLayout:
@@ -370,6 +375,7 @@
             Button:
                 text: "Load"
                 on_release: root.load(filechooser.path, filechooser.selection)
+
 
 <FileChooserWidget>:
     file_field: path

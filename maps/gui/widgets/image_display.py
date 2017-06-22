@@ -1,15 +1,22 @@
 from kivy.uix.boxlayout import BoxLayout
 from kivy.uix.image import Image
 from kivy.graphics.texture import Texture
-from kivy.properties import StringProperty, NumericProperty, ObjectProperty, BooleanProperty
+from kivy.properties import StringProperty,\
+    NumericProperty,\
+    ObjectProperty,\
+    BooleanProperty
+from kivy.garden.matplotlib.backend_kivyagg import NavigationToolbar2Kivy
 
 from maps.settings import setting
 
 import glob
 import os
 import cv2
+import matplotlib.pyplot as plt
 
-from maps.helpers.gui_modules import create_image_overlay, create_blank_image, load_image_sequence
+from maps.helpers.gui_modules import create_image_overlay,\
+    create_blank_image,\
+    load_image_sequence
 
 
 class FrameSelectionWidget(BoxLayout):
@@ -61,23 +68,56 @@ class FrameSelectionWidget(BoxLayout):
 
 
 class PlotDisplay(BoxLayout):
-    # plot = ObjectProperty()
+    plot_area = ObjectProperty()
+    plot_selection = ObjectProperty()
+
+    figure = ObjectProperty()
+    axes = ObjectProperty()
 
     def __init__(self, **kwargs):
         super(PlotDisplay, self).__init__(**kwargs)
-        # self.plot = get_plot()
+        self.figure, self.axes = plt.subplots()
+        print self.children
 
-    def update(self, dt):
-        pass
-        # from maps.core.z_stamping import get_plot
-        # frame = get_plot()
-        # frame = cv2.flip(frame, 0)
-        # print frame.shape
-        # buf = frame.tostring()
-        # # print buf
-        # image_texture = Texture.create(
-        #     size=(frame.shape[1], frame.shape[0]), colorfmt='rgb')
-        # image_texture.blit_buffer(buf, colorfmt='rgb', bufferfmt='ubyte')
-        # self.texture = image_texture
-        # print 'updateing'
-        # TODO: Draw rectangle from self.parent.selected_region here
+    def initialize_plots(self):
+        # nav_buttons = NavigationToolbar2Kivy(self.figure.canvas)
+        # self.plot_area.add_widget(nav_buttons.actionbar)
+        self.plot_area.add_widget(self.figure.canvas)
+        self.plotting_methods = {}
+        self.plot_selection.values = []
+
+        def show_plot(spinner, text):
+            print text
+
+        self.plot_selection.bind(text=show_plot)
+        self.plot_selection.bind(text=self.update_plot)
+
+    def update_plot(self, spinner_instance, method_name):
+        self.axes.clear()
+
+        if method_name == 'Select plot':
+            pass
+        elif method_name not in self.plotting_methods.keys():
+            print 'Unknown plot type'
+        elif self.plotting_methods[method_name]['data'] is None:
+            print 'No data to plot'
+        else:
+            method = self.plotting_methods[method_name]['method']
+            data = self.plotting_methods[method_name]['data']
+            method(self.axes, data)
+
+        self.figure.canvas.draw()
+
+    def add_plotting_method(self, plot_name, plot_method):
+        new_plot = {'method': plot_method, 'data': None}
+        self.plotting_methods[plot_name] = new_plot
+        self.plot_selection.values.append(plot_name)
+
+    def update_plot_data(self, plot_name, plot_data=None):
+        self.plotting_methods[plot_name]['data'] = plot_data
+
+    def clear_plots(self):
+        self.plotting_methods = {}
+        self.plot_selection.values = []
+        # for _, obj in self.plotting_methods.iteritems():
+        #     obj['data'] = None
