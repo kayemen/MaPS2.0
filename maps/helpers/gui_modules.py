@@ -107,10 +107,25 @@ def max_heartsize_frame(img):
 def get_rect_params():
     # return [rect_data['pt1'], rect_data['pt2']]
     return {
-        'x_end': rect_data['pt2'][1],
-        'y_end': rect_data['pt2'][0],
-        'height': rect_data['pt2'][1] - rect_data['pt1'][1],
+        'x_end': max(rect_data['pt1'][1], rect_data['pt2'][1]),
+        'y_end': max(rect_data['pt1'][0], rect_data['pt2'][0]),
+        'height': abs(rect_data['pt2'][1] - rect_data['pt1'][1]),
         'width': abs(rect_data['pt2'][0] - rect_data['pt1'][0]),
+    }
+
+
+def put_rect_params(rect_params, color=(0, 65535, 0), thickness=2):
+    return {
+        'pt1': (
+            rect_params['y_end'] - rect_params['width'],
+            rect_params['x_end'] - rect_params['height']
+        ),
+        'pt2': (
+            rect_params['y_end'],
+            rect_params['x_end']
+        ),
+        'color': color,
+        'thickness': thickness
     }
 
 if __name__ == '__main__':

@@ -15,8 +15,7 @@ import cv2
 import matplotlib.pyplot as plt
 
 from maps.helpers.gui_modules import create_image_overlay,\
-    create_blank_image,\
-    load_image_sequence
+    create_blank_image, load_image_sequence, put_rect_params
 
 
 class FrameSelectionWidget(BoxLayout):
@@ -29,6 +28,7 @@ class FrameSelectionWidget(BoxLayout):
     frame_select = NumericProperty()
     overlay = BooleanProperty(False)
     display_blank = BooleanProperty(False)
+    overlay_type = ObjectProperty()
 
     def __init__(self, frame_start=1, overlay_type='rectangle', **kwargs):
         super(FrameSelectionWidget, self).__init__(**kwargs)
@@ -47,7 +47,10 @@ class FrameSelectionWidget(BoxLayout):
             self.frame_select = int(
                 self.frame_selector.min + self.frame_selector.value
             )
-            frame = create_image_overlay(self.img_seq[self.frame_select])
+            if not self.overlay:
+                frame = create_image_overlay(self.img_seq[self.frame_select])
+            else:
+                frame = create_image_overlay(self.img_seq[self.frame_select], overlay_type=self.overlay_type, overlay_data=put_rect_params(self.overlay_data))
         frame = cv2.flip(frame, 0)
         buf = frame.tostring()
         image_texture = Texture.create(

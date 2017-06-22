@@ -330,10 +330,14 @@ class ReferenceFrameSelectionView(BoxLayout):
         ]
         pickle_object(data, file_name='corr_window.csv', dumptype='csv')
         print '\n'.join(['%s:%d' % (i[0], i[1]) for i in data])
+        self.frame_window.overlay_data = self.selected_region
+        self.frame_window.overlay = True
 
     def on_img_select(self, instance, value):
         # Disabling the region selection button till frame is finalized
         self.region_select.disabled = True
+        self.frame_window.overlay_data = {}
+        self.frame_window.overlay = False
 
     def validate_step(self):
         global error_message
