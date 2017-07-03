@@ -18,6 +18,7 @@ import maps
 import csv
 import cv2
 import time
+import matplotlib.pyplot as plt
 
 logger = logging.getLogger(__name__)
 
@@ -179,16 +180,20 @@ def compute_zstamp(z_stage, maxima_points, minima_points, ref_frame_no=0):
         start_slice, end_slice = compute_zook_extents(maxima_points[i], minima_points[i])
         # TODO: Can bias removal happen at end
         z_stamp[start_slice: end_slice] = \
-            z_stage[start_slice: end_slice] - z_stage[0] * np.ones(end_slice - start_slice)
+            z_stage[start_slice: end_slice] - z_stage[ref_frame_no] * np.ones(end_slice - start_slice)
     # Bias removal. Check if it should be z_stage[0] or z_stage[setting['ignore_startzook']]
     # z_stamp -= np.ones(z_stamp.shape)*z_stage[0]
 
     z_stamp_physical = z_stamp * setting['BF_resolution']
 
+    if setting['plot_steps']:
+        plt.plot(z_stamp)
+        plt.show()
+
     return (z_stamp, z_stamp_physical)
 
 
-def compute_ideal_zstamp(z_stage, maxima_points, minima_points):
+def compute_ideal_zstamp(z_stage, maxima_points, minima_points, ref_frame_no=0):
     '''
     Compute the ideal minima and maxima points deterministically. Use this to compensate for quantization errors in actual values
     INPUTS:
@@ -213,7 +218,12 @@ def compute_ideal_zstamp(z_stage, maxima_points, minima_points):
     # #last frame of one zook and first frame of next zook
 
     for i in xrange(len(minima_points)):
-        z_stamp_det[minima_points_deterministic[i]: maxima_points_deterministic[i] + 1] = np.round(np.arange(0, setting['ZookZikPeriod']) * pixel_shift_per_frame * setting['resampling_factor'])
+        z_stamp_det[minima_points_deterministic[i]: maxima_points_deterministic[i] +
+                    1] = np.round(np.arange(0 - ref_frame_no, setting['ZookZikPeriod'] - ref_frame_no) * pixel_shift_per_frame * setting['resampling_factor'])
+
+    if setting['plot_steps']:
+        plt.plot(z_stamp_det)
+        plt.show()
 
     return z_stamp_det
 
@@ -250,17 +260,28 @@ def load_correlation_window_params(csv_file):
 
 
 def extract_window(frame, x_start, x_end, y_start, y_end):
-    return frame[int(x_start): int(x_end) + 1, int(y_start): int(y_end) + 1]
+    frame_win = frame[int(x_start): int(x_end) + 1, int(y_start): int(y_end) + 1]
+    return frame_win
 
 
-def load_frame_and_upscale(img_path, frame_no):
+def load_frame(img_path, frame_no, upscale=True):
     '''
     Load the tifffile of the frame, resize (upsample by resampling factor) and return cropped window)
     '''
     img = importtiff(img_path, frame_no, prefix=setting['image_prefix'], index_start_number=setting['index_start_at'], num_digits=setting['num_digits'])
-    img_resized = resize(img, (img.shape[0] * setting['resampling_factor'], img.shape[1] * setting['resampling_factor']), preserve_range=True)
 
     return img_resized
+    if upscale:
+        img_resized = resize(
+            img,
+            (
+                img.shape[0] * setting['resampling_factor'],
+                img.shape[1] * setting['resampling_factor']
+            ),
+            preserve_range=True
+        )
+    else:
+        return img
 
 
 def check_convexity(corr_points):
@@ -365,7 +386,7 @@ def calculate_frame_optimal_shift(img_path, frame_no, ref_frame_window, x_start_
                 print 'Error in Frame:', frame_no
 
     # Compute ideal shift using corr_array
-    z_stamp_optimal[frame_no] = z_stamp_det_shifted[frame_no] + np.argmax(corr_array) - slide_limit_resized
+    z_stamp_optimal[frame_no] = z_stamp_det[frame_no] + np.argmax(corr_array) - slide_limit_resized
 
 
 def compute_frame_shift_values(img_path, maxima_points, minima_points, z_stamp_det):
@@ -388,11 +409,11 @@ def compute_frame_shift_values(img_path, maxima_points, minima_points, z_stamp_d
 
     # Shifting deterministic z stamp to make reference frame have 0 shift
     # TODO: TEST if resampling can be done here instead of before rounding step
-    # z_stamp_det_shifted = (z_stamp_det - z_stamp_det[ref_frame_no]) * setting['resampling_factor']
-    z_stamp_det_shifted = (z_stamp_det - z_stamp_det[ref_frame_no])
+    # z_stamp_det = (z_stamp_det - z_stamp_det[ref_frame_no]) * setting['resampling_factor']
+    # z_stamp_det = (z_stamp_det - z_stamp_det[ref_frame_no])
 
     # Load reference frame
-    ref_frame = load_frame_and_upscale(img_path, ref_frame_no)
+    ref_frame = load_frame(img_path, ref_frame_no)
 
     # Compute window of reference frame
     ref_frame_window = extract_window(ref_frame, x_start_resized, x_end_resized, y_start_resized, y_end_resized)
