@@ -7,6 +7,7 @@ BASE_DIR = os.path.dirname(__file__)
 
 setting = {}
 
+
 def reload_current_settings(setting_json_path=os.path.join(BASE_DIR, 'current_inputs.json')):
     global setting
 
@@ -19,7 +20,7 @@ def reload_current_settings(setting_json_path=os.path.join(BASE_DIR, 'current_in
 
         # exec('global %s' % varobj)
         if setting_obj['value'] != '':
-        #     exec('%s = %s' % (varobj, setting_obj['value']), globals())
+            #     exec('%s = %s' % (varobj, setting_obj['value']), globals())
             if setting_obj['type'] == 'int':
                 setting[varobj] = int(setting_obj['value'])
             elif setting_obj['type'] == 'float':
@@ -31,5 +32,9 @@ def reload_current_settings(setting_json_path=os.path.join(BASE_DIR, 'current_in
             else:
                 setting[varobj] = setting_obj['value']
         else:
-        #     exec('%s = None' % (varobj, ), globals())
+            #     exec('%s = None' % (varobj, ), globals())
             setting[varobj] = None
+
+
+def get_setting_list():
+    return setting.keys()

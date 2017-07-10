@@ -24,6 +24,22 @@
         "type": "path"
     },
     {
+        "description": "Cropped Phase frames folder",
+        "varname": "bf_crop_path",
+        "value": "D:\\Scripts\\MaPS\\Data sets\\Phase_cropped_old",
+        "helptext": "",
+        "hidden": false,
+        "type": "path"
+    },
+    {
+        "description": "Phase frames DWT folder",
+        "varname": "bf_dwt_path",
+        "value": "D:\\Scripts\\MaPS\\Data sets\\Phase_DWT",
+        "helptext": "",
+        "hidden": false,
+        "type": "path"
+    },
+    {
         "description": "Name prefix of phase stamping images",
         "varname": "image_prefix",
         "value": "Phase_Bidi1_",
@@ -64,9 +80,17 @@
         "type": "bool"
     },
     {
+        "description": "Plot steps",
+        "varname": "plot_steps",
+        "value": "False",
+        "helptext": "",
+        "hidden": true,
+        "type": "bool"
+    },
+    {
         "description": "Phase-stamping frame count",
         "varname": "bf_framecount",
-        "value": "1000",
+        "value": "999",
         "helptext": "",
         "hidden": false,
         "type": "int"
@@ -81,8 +105,16 @@
     },
     {
         "description": "Stationary brightfield images folder",
-        "varname": "stat_bf_path",
-        "value": "",
+        "varname": "bf_period_path",
+        "value": "D:\\Scripts\\MaPS\\Data sets\\Stat_frames",
+        "helptext": "",
+        "hidden": false,
+        "type": "path"
+    },
+    {
+        "description": "Stationary frames DWT folder",
+        "varname": "bf_period_dwt_path",
+        "value": "D:\\Scripts\\MaPS\\Data sets\\Stat_DWT",
         "helptext": "",
         "hidden": false,
         "type": "path"
@@ -128,9 +160,17 @@
         "type": "int"
     },
     {
-        "description": "Resampling factor",
+        "description": "Spatial Resampling factor",
         "varname": "resampling_factor",
         "value": "5",
+        "helptext": "",
+        "hidden": false,
+        "type": "int"
+    },
+    {
+        "description": "Temporal Resampling factor",
+        "varname": "time_resampling_factor",
+        "value": "4",
         "helptext": "",
         "hidden": false,
         "type": "int"
@@ -139,6 +179,14 @@
         "description": "Local shift limit",
         "varname": "slide_limit",
         "value": "5",
+        "helptext": "",
+        "hidden": false,
+        "type": "int"
+    },
+    {
+        "description": "Verical shift limit",
+        "varname": "slide_limit_x",
+        "value": "10",
         "helptext": "",
         "hidden": false,
         "type": "int"
@@ -162,7 +210,7 @@
     {
         "description": "Initial zooks discarded",
         "varname": "ignore_zooks_at_start",
-        "value": "2",
+        "value": "1",
         "helptext": "",
         "hidden": false,
         "type": "int"

@@ -55,13 +55,18 @@ def load_kymograph(kymo_path):
 
 def compute_raw_zstage(kymo_array, match_value=255):
     '''
+    Computes raw ztage motion in pixels using kymograph as starting point for the method. This is used for further estimation of actual motion of the pixels.
     Find rightmost pixel matching match_value in each row and return as array
+    Method 1: Assumes right side of pixel has white pixels, left of image has black pixels in the kymograph. Finds the rightmost black pixel.
+    Method 2: calculates first order difference of each row of pixels. Uses the point with the largest difference.
+
     INPUTS:
         kymo_array: numpy array of kymgraph pixel values
         match_value: value to find the rightmost of
     OUTPUTS:
         z_stage: array of distances of rightmost pixel from edge
     '''
+    # Use 'existing' to use pixel matching, 'new' for 1st order difference method
     method = 'new'
 
     z_stage = np.asarray([])
@@ -87,6 +92,9 @@ def compute_maxima_minima(z_stage, maxima_threshold=10):
     '''
     Find the maxima and minima points in the z_stage data.
     From one minima to the next maxima is a zook. From a minima to the next maxima is a zik
+    The fisrt minima is obtained from settings.
+    Maxima points are the points where the z_stage values drop by a value greater than the threshold set. Minima points are the points with lowest value between 2 maxima points.
+
     INPUTS:
         z_stage: array of distances of rightmost pixel from edge
         maxima_threshold: Threshold difference above which value is considered maxima
@@ -157,6 +165,9 @@ def compute_zookzik_stats(maxima_points, minima_points):
 
 
 def compute_zook_extents(maxima_point, minima_point):
+    '''
+    Function to compute the extent of frames to process in each zook. Added function to clean repeated code. Every zook has some frames ignored at start and end. Given the extent of the zook (start point and end point i.e maxima_point and next minima point) retuns the start and end frame numbers.
+    '''
     start_slice = minima_point + setting['ignore_startzook']
     end_slice = maxima_point - setting['ignore_endzook'] + 1
 
@@ -165,7 +176,8 @@ def compute_zook_extents(maxima_point, minima_point):
 
 def compute_zstamp(z_stage, maxima_points, minima_points, ref_frame_no=0):
     '''
-    Remove the constant bias in z_stage values. Pull down/up to get rid of any constant shift terms
+    Remove the constant bias in z_stage values. Pull down/up to get rid of any constant shift terms. Shift done makes the reference frame have zero shift
+
     INPUTS:
         z_stage: array of distances of rightmost pixel from edge
         maxima_points: index of points at which maxima occur in z_stage
@@ -195,7 +207,8 @@ def compute_zstamp(z_stage, maxima_points, minima_points, ref_frame_no=0):
 
 def compute_ideal_zstamp(z_stage, maxima_points, minima_points, ref_frame_no=0):
     '''
-    Compute the ideal minima and maxima points deterministically. Use this to compensate for quantization errors in actual values
+    Compute the ideal shift between the minima and maxima points deterministically. Use this to compensate for quantization errors in actual values. Find the most commons slope of shift/frame amongst all the zooks, and generates a determisitic z stamp with lines having that slope for every zook. Adjusts the y intercept for each zook so that reference frame always has shift of exactly 0.
+
     INPUTS:
         maxima_points: index of points at which maxima occur in z_stage
         minima_points: index of points at which minima occur in z_stage
@@ -230,7 +243,8 @@ def compute_ideal_zstamp(z_stage, maxima_points, minima_points, ref_frame_no=0):
 
 def load_correlation_window_params(csv_file):
     '''
-    Load the bounding regions of window used for correlation.
+    Load the bounding regions of window used for correlation. As a convention, (x_end, height) and (y_end, width) are only stored. x_start and y_start are computed as and when needed to ensure that height and width dont change due to quantization or floating point errors
+
     INPUTS:
         csv_file(str): name of csv file with params
     OUTPUTS:
@@ -260,18 +274,19 @@ def load_correlation_window_params(csv_file):
 
 
 def extract_window(frame, x_start, x_end, y_start, y_end):
+    '''
+    Return the ROI from a frame within the bounding box specified by x_start, x_end, y_start, y_end
+    '''
     frame_win = frame[int(x_start): int(x_end) + 1, int(y_start): int(y_end) + 1]
     return frame_win
 
 
-def load_frame(img_path, frame_no, upscale=True):
+def load_frame(img_path, frame_no, upsample=True):
     '''
-    Load the tifffile of the frame, resize (upsample by resampling factor) and return cropped window)
+    Load the tiff file of the frame, resize (upsample by resampling factor if needed) if needed and return image array.
     '''
     img = importtiff(img_path, frame_no, prefix=setting['image_prefix'], index_start_number=setting['index_start_at'], num_digits=setting['num_digits'])
-
-    return img_resized
-    if upscale:
+    if upsample:
         img_resized = resize(
             img,
             (
@@ -280,6 +295,8 @@ def load_frame(img_path, frame_no, upscale=True):
             ),
             preserve_range=True
         )
+
+        return img_resized
     else:
         return img
 
@@ -287,7 +304,8 @@ def load_frame(img_path, frame_no, upscale=True):
 def check_convexity(corr_points):
     '''
     Function to check convexity of correlation parameters.
-    Refer to overview to see convexity checking mechanism
+    Method 1: Find point with maximum correlation. Check if it is greater than its neighbours. Mark as convex.
+    Method 2: Find point with maximum correlation. Check if the prior and posterior partitions it splits the range into are sorted in ascending and descending order respectively.
     INPUTS:
         corr_points(array): array of correlation values in local neighbourhood of a given shift
     OUTPUTS:
@@ -315,14 +333,17 @@ def check_convexity(corr_points):
     return False
 
 
-def calculate_frame_optimal_shift(img_path, frame_no, ref_frame_window, x_start_resized, x_end_resized, y_start_resized_frame, y_end_resized_frame, z_stamp_optimal, z_stamp_det_shifted):
+def calculate_frame_optimal_shift(img_path, frame_no, ref_frame_window, x_start_resized, x_end_resized, y_start_resized_frame, y_end_resized_frame, z_stamp_optimal, z_stamp_det):
     '''
-    Calculate optimal shift for single frame. This method does the z stamp calculation with wiggle of "setting['slide_limit']" pixels in low-res domain. This function can be threaded in the calling scope to improve performance.
+    Calculate optimal shift for single frame.
+    This method does the z stamp calculation with wiggle of "setting['slide_limit']" pixels in low-res domain.
+    This function can be threaded in the calling scope to improve performance.
+    It first finds the correlation at large gaps, checks if they form a convex set, and then searches in the smaller space around the maxima if convex..
     '''
     slide_limit_resized = setting['slide_limit'] * setting['resampling_factor']
 
     # Load frame and scale
-    frame = load_frame_and_upscale(img_path, frame_no)
+    frame = load_frame(img_path, frame_no)
     # Correlation matrix for frame. Reset to zero for each frame
     corr_array = np.zeros(2 * slide_limit_resized + 1)
 
@@ -581,6 +602,7 @@ if __name__ == '__main__':
 
     plt.plot(z_stamp_opt)
     plt.show()
+    if setting['plot_steps']:
 
     for bad_zook in bad_zooks:
         print '=' * 80
@@ -593,6 +615,7 @@ if __name__ == '__main__':
     plt.plot(res)
     plt.show()
 
+    if setting['plot_steps']:
 
     # # TODO: Set to true to plot histogram and store for each bad zook
     # if is_bad_zook and plot_hist:
