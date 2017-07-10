@@ -1,10 +1,13 @@
 import matplotlib.pyplot as plt
 
-from maps.core.z_stamping import z_stamping_step
+from maps.core.z_stamping import z_stamping_step,\
+    z_stamping_step_xz,\
+    shift_frames_and_store,\
+    shift_frames_and_store_xz
 from maps.helpers.logging_config import logger_config
 from maps.settings import reload_current_settings, setting
 from maps.helpers.misc import pickle_object
-from maps.helpers.gui_modules import load_image_sequence, max_heartsize_frame, get_rect_params
+from maps.helpers.gui_modules import load_image_sequence, max_heartsize_frame, get_rect_params, masking_window_frame
 
 import logging
 import os
@@ -49,7 +52,7 @@ setting['first_minima'] = 0
 kymograph_path = 'D:\Scripts\MaPS\Data sets\Kymographs\KM-XZ_0.tif'
 
 # Number of frames to process
-frame_count = 999
+frame_count = 59999
 
 # Folder containing brightfield images for phase stamping. The images must be
 # named sequentially
@@ -57,42 +60,46 @@ phase_image_folder = 'D:\\Scripts\\MaPS\\Data sets\\Phase_Bidi\\'
 
 # Whether to use existing z stamp values from "data dump" folder, or compute
 # from raw images over again
-use_existing_datadump_vals = True
+use_existing_datadump_vals = False
 
 # STEP 1: Correlation window selection
 # This step selects the small rectangular region to be used when calculating
 # shift in pixels of each frame from a reference frame. This is used for
 # z stamping the frames. The window a=parameters are dudmped as a csv file.
-USE_GUI_SELECTION_WINDOW = True
+USE_GUI_CORR_WINDOW = False
+USE_GUI_CROP_WINDOW = False
 
 # Frame number of the frame with the largest heart size.
 # This frame will be used as reference frame
-frame_no = 12
+frame_no = 21
 
-if USE_GUI_SELECTION_WINDOW and not use_existing_datadump_vals:
+img_path = glob.glob(
+os.path.join(phase_image_folder, '*.tif')
+)
+
+if USE_GUI_CORR_WINDOW and not use_existing_datadump_vals:
     # Uses GUI to select rectangular window in specified frame.
     # Click and drag with mouse tto select region. Clos window to finalize
-    img_path = glob.glob(
-        os.path.join(phase_image_folder, '*.tif')
-    )[frame_no]
-    img_seq = load_image_sequence([img_path])
+    img_seq = load_image_sequence([img_path[frame_no]])
     max_heartsize_frame(img_seq[0])
 
     params = get_rect_params()
 
-    x_end = params['x_end']
-    height = params['height']
-    y_end = params['y_end']
-    width = params['width']
 else:
+    params = {}
     # Bottom edge of window
-    x_end = 119
+    params['x_end'] = 114
     # Height of window
-    height = 46
+    params['height'] = 29
     # Right edge of window
-    y_end = 240
+    params['y_end'] = 248
     # Width of window
-    width = 38
+    params['width'] = 33
+
+x_end = params['x_end']
+height = params['height']
+y_end = params['y_end']
+width = params['width']
 
 data = [
     ('frame', frame_no),
@@ -102,7 +109,7 @@ data = [
     ('width', width),
 ]
 
-print 'Using reference frame as-'
+print 'Using reference window as-'
 print '\n'.join(['%s:%d' % (i[0], i[1]) for i in data])
 
 pickle_object(data, file_name='corr_window.csv', dumptype='csv')
@@ -114,25 +121,83 @@ raw_input('Press enter to continue...')
 # the location of phase stamping images and an optional flag (whether to
 # recompute z stamp values or used pickled values)
 
-z_stamp_opt, z_stamp_cf, res, bad_zooks = z_stamping_step(
+z_stamp_opt, x_stamp_opt, z_stamp_cf, res, bad_zooks, minp = z_stamping_step_xz(
     kymo_path=kymograph_path,
     frame_count=frame_count,
     phase_img_path=phase_image_folder,
     use_old=use_existing_datadump_vals,
-    datafile_name='z_stamp_opt_KM-XZ_0.pkl'
+    datafile_name='z_stamp_opt_KM-XZ_0.pkl',
+    datafile_name_x='x_stamp_opt_KM-XZ_0.pkl'
 )
+# z_stamp_opt, z_stamp_cf, res, bad_zooks, minp = z_stamping_step(
+#     kymo_path=kymograph_path,
+#     frame_count=frame_count,
+#     phase_img_path=phase_image_folder,
+#     use_old=use_existing_datadump_vals,
+#     datafile_name='z_stamp_opt_KM-XZ_0.pkl'
+# )
 
-# Example of display values
-plt.plot(z_stamp_opt)
-plt.show()
+# # Example of display values
+# plt.figure(111)
+# plt.plot(z_stamp_opt)
+# plt.figure(112)
+# plt.plot(x_stamp_opt)
+# plt.show()
+#
+# for bad_zook in bad_zooks:
+#     print '=' * 80
+#     print 'Zook #%d' % bad_zook[0]
+#     print 'Fault locations:'
+#     print bad_zook[2]
+#     print 'Fault values:'
+#     print bad_zook[1]
+#
+# plt.plot(res)
+# plt.show()
 
-for bad_zook in bad_zooks:
-    print '=' * 80
-    print 'Zook #%d' % bad_zook[0]
-    print 'Fault locations:'
-    print bad_zook[2]
-    print 'Fault values:'
-    print bad_zook[1]
+# STEP 3: Cropping window selection and masking
+# This step selects the rectangular window to be used when cropping the
+# frame. It also creates the free form mask around the heart image and saves
+# the mask image
 
-plt.plot(res)
-plt.show()
+if USE_GUI_CROP_WINDOW:
+    img_seq = load_image_sequence([img_path[frame_no]])
+    masking_window_frame(img_seq[0])
+    crop_params = get_rect_params()
+else:
+    crop_params = {}
+    # Bottom edge of window
+    crop_params['x_end'] = 307
+    # Height of window
+    crop_params['height'] = 173
+    # Right edge of window
+    crop_params['y_end'] = 303
+    # Width of window
+    crop_params['width'] = 181
+
+
+x_end = crop_params['x_end']
+height = crop_params['height']
+y_end = crop_params['y_end']
+width = crop_params['width']
+
+data = [
+    ('frame', frame_no),
+    ('x_end', x_end),
+    ('height', height),
+    ('y_end', y_end),
+    ('width', width),
+]
+
+print 'Using cropping window as-'
+print '\n'.join(['%s:%d' % (i[0], i[1]) for i in data])
+
+pickle_object(data, file_name='crop_window.csv', dumptype='csv')
+
+raw_input('Press enter to continue...')
+
+# STEP 4: Shift and crop the frames
+# Shift and store the frames in the good zooks
+
+shift_frames_and_store_xz(phase_image_folder, z_stamp_opt, x_stamp_opt, [], minp, x_end, height, y_end, width, frame_no)
+# shift_frames_and_store(phase_image_folder, z_stamp_opt, [], minp, x_end, height, y_end, width, frame_no)
