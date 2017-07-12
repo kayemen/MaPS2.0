@@ -19,6 +19,33 @@ def make_or_clear_directory(path):
     os.makedirs(path)
 
 
+def unpickle_object(file_name, dumptype='pkl'):
+    '''
+    Load data from file.
+    Loads as pkl format by default
+
+    For csv and xlsx:
+    data must be a list of tuples. Each item of list (tuple) is 1 row of data.
+    The elements within the row are the cells in the row.
+    INPUTS:
+        data(LIST): List of tuples of row data
+    '''
+    data_dump = setting['data_dump']
+
+    final_path = os.path.join(data_dump, file_name)
+
+    if not final_path.endswith(dumptype):
+        final_path = '%s.%s' % (final_path, dumptype)
+
+    data = None
+
+    if dumptype == 'pkl':
+        with open(final_path, 'rb') as pkfp:
+            data = pickle.load(pkfp)
+
+    return data
+
+
 def pickle_object(data, file_name=None, dumptype='pkl'):
     '''
     Dump data to file.

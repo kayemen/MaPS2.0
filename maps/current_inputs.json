@@ -40,6 +40,14 @@
         "type": "path"
     },
     {
+        "description": "Upsampled phase frames DWT folder",
+        "varname": "bf_us_dwt_path",
+        "value": "D:\\Scripts\\MaPS\\Data sets\\Upsampled_BF_DWT",
+        "helptext": "",
+        "hidden": false,
+        "type": "path"
+    },
+    {
         "description": "Name prefix of phase stamping images",
         "varname": "image_prefix",
         "value": "Phase_Bidi1_",
@@ -155,6 +163,14 @@
         "description": "Frames per zook",
         "varname": "ZookZikPeriod",
         "value": "192",
+        "helptext": "",
+        "hidden": false,
+        "type": "int"
+    },
+    {
+        "description": "Zooks for canonical sampling",
+        "varname": "canonical_zook_count",
+        "value": "10",
         "helptext": "",
         "hidden": false,
         "type": "int"
