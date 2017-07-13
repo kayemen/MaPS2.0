@@ -62,7 +62,7 @@ class InterfaceManager(BoxLayout):
             self.InputParametersView,
         ]
         self.current_view = 0
-        settings.reload_current_settings()
+        settings.read_setting_from_json()
         self.screen_area.add_widget(self.view_order[self.current_view])
         # self.progress_bar.value_normalized = float(self.current_view) / len(self.view_order)
         popup_content = BoxLayout(orientation='vertical')
@@ -145,7 +145,7 @@ class InterfaceManager(BoxLayout):
     def reload_settings(self, new_parameters):
         # TODO
         print 'reloading settings'
-        settings.reload_current_settings()
+        settings.read_setting_from_json()
         self.load_widgets()
 
 
@@ -275,9 +275,9 @@ class ReferenceFrameSelectionView(BoxLayout):
     frame_select = ObjectProperty()
     region_select = ObjectProperty()
 
-    def __init__(self, fps=20, **kwargs):
+    def __init__(self, **kwargs):
         super(ReferenceFrameSelectionView, self).__init__(**kwargs)
-        self.fps = fps
+        # self.fps = fps
         self.selected_frame = None
         self.selected_region = None
         self.frame_window.frame_count = settings.setting['fphb']
@@ -301,12 +301,14 @@ class ReferenceFrameSelectionView(BoxLayout):
         return True
 
     def widget_active(self):
-        self.refresh = Clock.schedule_interval(self.frame_window.update, 1.0 / self.fps)
+        # self.refresh = Clock.schedule_interval(self.frame_window.update, 1.0 / self.fps)
+        self.frame_window.refresh = True
         self._keyboard = Window.request_keyboard(self._keyboard_closed, self)
         self._keyboard.bind(on_key_down=self._on_keyboard_down)
 
     def widget_inactive(self):
-        self.refresh.cancel()
+        self.frame_window.refresh = False
+        # self.refresh.cancel()
 
     def mark_frame(self):
         self.selected_frame = int(self.frame_window.frame_select)
@@ -328,6 +330,7 @@ class ReferenceFrameSelectionView(BoxLayout):
             ('y_end', self.selected_region['y_end']),
             ('width', self.selected_region['width']),
         ]
+        settings.setting['ref_frame'] = self.selected_frame
         pickle_object(data, file_name='corr_window.csv', dumptype='csv')
         print '\n'.join(['%s:%d' % (i[0], i[1]) for i in data])
         self.frame_window.overlay_data = self.selected_region
@@ -407,16 +410,17 @@ class ZookPruningView(BoxLayout):
         return True
 
     def widget_active(self):
-        self.refresh = Clock.schedule_interval(self.img_frame.update, 1.0 / self.fps)
+        self.img_frame.refresh = True
         self._keyboard = Window.request_keyboard(self._keyboard_closed, self)
         self._keyboard.bind(on_key_down=self._on_keyboard_down)
 
     def widget_inactive(self):
-        self.refresh.cancel()
+        self.img_frame.refresh = False
 
     def process_kymograph(self):
         if self.selected_kymo != '':
-            self.refresh.cancel()
+            self.img_frame.refresh = False
+            # self.refresh.cancel()
             if self.kymo_names[self.selected_kymo]:
                 print 'Already processed this kymo'
                 self.z_stamps, _, residues, self.bad_zooks = z_stamping_step(
@@ -451,7 +455,7 @@ class ZookPruningView(BoxLayout):
             self.plot_window.update_plot_data('Residues', residues)
             self.plot_window.update_plot_data('ZStamps', self.z_stamps)
 
-            self.refresh = Clock.schedule_interval(self.img_frame.update, 1.0 / self.fps)
+            self.img_frame.refresh = True
 
     # FrameSelectionWidget modification functions
     def load_zook_frames(self, widget, zook_no):
@@ -498,8 +502,8 @@ class ZookPruningView(BoxLayout):
             zook_node.bind(is_selected=self.zook_node_callback)
             self.plot_window.add_plotting_method('Zook#%d' % (zook_no), line_plot)
 
-            zook_start = max((zook_no - 1) * settings.setting['ZookZikPeriod'], 0)
-            zook_end = min((zook_no + 2) * settings.setting['ZookZikPeriod'], len(self.z_stamps))
+            zook_start = max((zook_no) * settings.setting['ZookZikPeriod'], 0)
+            zook_end = min((zook_no + 1) * settings.setting['ZookZikPeriod'], len(self.z_stamps))
 
             self.plot_window.update_plot_data('Zook#%d' % (zook_no), self.z_stamps[zook_start:zook_end])
 
@@ -513,6 +517,7 @@ class ZookPruningView(BoxLayout):
         if len(self.zook_sel.root.nodes) > 0:
             self.zook_sel.select_node(self.zook_sel.root.nodes[0])
         else:
+            self.selected_zook = -1
             self.process_discarded_zooks()
 
     # Tree view callbacks
@@ -559,9 +564,86 @@ class ZookPruningView(BoxLayout):
 
     def process_discarded_zooks(self):
         # Write the final z stamp after discarding bad zooks
-        print self.discarded_zooks_list
+        print 'Discarded zooks-', self.discarded_zooks_list
+        # self.passed_zstamps = []
+        # for zook in
 
     def validate_step(self):
+        return True
+
+
+class CroppingWindowView(BoxLayout):
+    # frame_window = ObjectProperty()
+    # img_select = NumericProperty()
+    crop_frame = ObjectProperty()
+    mask_frame = ObjectProperty()
+    crop_region = ObjectProperty()
+    mask_region = ObjectProperty()
+
+    def __init__(self, **kwargs):
+        super(CroppingWindowView, self).__init__(**kwargs)
+        # self.fps = fps
+        self.selected_frame = None
+        self.crop_region = None
+        self.mask_region = None
+
+        self.crop_frame.frame_selector.disabled = True
+        self.mask_frame.frame_selector.disabled = True
+        # img_paths = glob.glob(
+        #     os.path.join(settings.setting['bf_path'], '*.tif')
+        # )[:self.frame_window.frame_count]
+        # self.frame_window.load_frames(img_paths)
+
+    def widget_active(self):
+        self.selected_frame = settings.setting['ref_frame']
+        img_paths = glob.glob(
+            os.path.join(settings.setting['bf_path'], '*.tif')
+        )[self.selected_frame]
+        self.frame_window.refresh = True
+        self.frame_window.load_frames(img_paths)
+
+    def widget_inactive(self):
+        self.frame_window.refresh = False
+        # self.refresh.cancel()
+
+    def mark_cropping(self):
+        self.selected_frame = int(self.frame_window.frame_select)
+        self.selected_region = None
+        sel_frame = self.frame_window.img_seq[self.selected_frame]
+        threading.Thread(
+            target=max_heartsize_frame,
+            args=(sel_frame, )
+        ).start()
+        self.region_select.disabled = False
+
+    def mark_mask(self):
+        cv2.destroyAllWindows()
+        self.selected_region = get_rect_params()
+        data = [
+            ('frame', self.selected_frame),
+            ('x_end', self.selected_region['x_end']),
+            ('height', self.selected_region['height']),
+            ('y_end', self.selected_region['y_end']),
+            ('width', self.selected_region['width']),
+        ]
+        pickle_object(data, file_name='corr_window.csv', dumptype='csv')
+        print '\n'.join(['%s:%d' % (i[0], i[1]) for i in data])
+        self.frame_window.overlay_data = self.selected_region
+        self.frame_window.overlay = True
+
+    def on_img_select(self, instance, value):
+        # Disabling the region selection button till frame is finalized
+        self.region_select.disabled = True
+        self.frame_window.overlay_data = {}
+        self.frame_window.overlay = False
+
+    def validate_step(self):
+        global error_message
+        if DEBUG:
+            return True
+        if self.selected_frame is None or self.selected_region is None:
+            error_message = 'Please select a frame and a region within the frame'
+            return False
         return True
 
 

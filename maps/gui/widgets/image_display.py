@@ -6,6 +6,7 @@ from kivy.properties import StringProperty,\
     ObjectProperty,\
     BooleanProperty
 from kivy.garden.matplotlib.backend_kivyagg import NavigationToolbar2Kivy
+from kivy.clock import Clock
 
 from maps.settings import setting
 
@@ -18,6 +19,31 @@ from maps.helpers.gui_modules import create_image_overlay,\
     create_blank_image, load_image_sequence, put_rect_params
 
 
+class FrameDisplay(Image):
+    img_path = StringProperty()
+
+    def __init__(self, **kwargs):
+        super(FrameDisplay, self).__init__(**kwargs)
+
+    def load_frame(self):
+        if self.display_blank:
+            self.frame_select = 0
+            frame = create_blank_image(400, 600)
+        else:
+            self.frame_select = int(
+                self.frame_selector.min + self.frame_selector.value
+            )
+            if not self.overlay:
+                frame = create_image_overlay(self.img_seq[self.frame_select])
+            else:
+                frame = create_image_overlay(self.img_seq[self.frame_select], overlay_type=self.overlay_type, overlay_data=put_rect_params(self.overlay_data))
+        frame = cv2.flip(frame, 0)
+        buf = frame.tostring()
+        image_texture = Texture.create(
+            size=(frame.shape[1], frame.shape[0]), colorfmt='bgr')
+        image_texture.blit_buffer(buf, colorfmt='bgr', bufferfmt='ubyte')
+        self.frame.texture = image_texture
+
 class FrameSelectionWidget(BoxLayout):
     frame = ObjectProperty()
     frame_selector = ObjectProperty()
@@ -29,6 +55,8 @@ class FrameSelectionWidget(BoxLayout):
     overlay = BooleanProperty(False)
     display_blank = BooleanProperty(False)
     overlay_type = ObjectProperty()
+    refresh = BooleanProperty(False)
+    fps = NumericProperty(20)
 
     def __init__(self, frame_start=1, overlay_type='rectangle', **kwargs):
         super(FrameSelectionWidget, self).__init__(**kwargs)
@@ -66,8 +94,11 @@ class FrameSelectionWidget(BoxLayout):
         self.frame_count = len(self.img_seq)
         self.frame_start = frame_index_start
 
-    # def load_blank(self):
-    #     pass
+    def on_refresh(self, instance, value):
+        if value:
+            self.refresh_event = Clock.schedule_interval(self.update, 1 / self.fps)
+        else:
+            self.refresh_event.cancel()
 
 
 class PlotDisplay(BoxLayout):
@@ -80,7 +111,6 @@ class PlotDisplay(BoxLayout):
     def __init__(self, **kwargs):
         super(PlotDisplay, self).__init__(**kwargs)
         self.figure, self.axes = plt.subplots()
-        print self.children
 
     def initialize_plots(self):
         # nav_buttons = NavigationToolbar2Kivy(self.figure.canvas)
@@ -89,10 +119,6 @@ class PlotDisplay(BoxLayout):
         self.plotting_methods = {}
         self.plot_selection.values = []
 
-        def show_plot(spinner, text):
-            print text
-
-        self.plot_selection.bind(text=show_plot)
         self.plot_selection.bind(text=self.update_plot)
 
     def update_plot(self, spinner_instance, method_name):

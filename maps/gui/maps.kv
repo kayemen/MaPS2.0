@@ -167,6 +167,7 @@
         FrameSelectionWidget:
             id: frame
             size_hint: 1, 1
+            fps: 20
 
         Button:
             id: help_text
@@ -243,6 +244,7 @@
                 FrameSelectionWidget:
                     id: img_frame
                     size_hint: 1, 1
+                    fps: 20
 
                 Button:
                     id: help_text
@@ -314,6 +316,34 @@
                         indent_level: 4
                         # size_hint: 1, 1
 
+# Widget to select cropping window and mask
+<CroppingWindowView>:
+    crop_frame: crop_frame
+    mask_frame: mask_frame
+
+    orientation: 'vertical'
+
+    BoxLayout:
+        FrameSelectionWidget:
+            id: crop_frame
+
+        FrameSelectionWidget:
+            id: mask_frame
+
+    BoxLayout:
+        Label:
+            size_hint: 0.4, 1
+            text: ""
+
+        Button:
+            size_hint: 0.3, 1
+            text: "Select Cropping region"
+            on_release: root.mark_cropping()
+
+        Button:
+            size_hint: 0.3, 1
+            text: "Select Mask"
+            on_release: root.mark_mask()
 
 # Widget declarations
 <FrameSelectionWidget>:

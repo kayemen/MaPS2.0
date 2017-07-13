@@ -3,3 +3,5 @@
 local*
 activate_venv.ps1
 maps/modified_inputs\.json
+
+wheels/scipy-0\.19\.1-cp27-cp27m-win_amd64\.whl
