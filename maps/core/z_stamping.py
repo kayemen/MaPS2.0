@@ -410,7 +410,7 @@ def calculate_frame_optimal_shift(img_path, frame_no, ref_frame_window, x_start_
     z_stamp_optimal[frame_no] = z_stamp_det[frame_no] + np.argmax(corr_array) - slide_limit_resized
 
 
-def calculate_frame_optimal_shift_xz(img_path, frame_no, ref_frame_window, x_start_resized, x_end_resized, y_start_resized_frame, y_end_resized_frame, z_stamp_optimal, x_stamp_optimal, z_stamp_det):
+def calculate_frame_optimal_shift_yz(img_path, frame_no, ref_frame_window, x_start_resized, x_end_resized, y_start_resized_frame, y_end_resized_frame, z_stamp_optimal, x_stamp_optimal, z_stamp_det):
     '''
     Calculate optimal shift for single frame.
     This method does the z stamp calculation with wiggle of "setting['slide_limit']" pixels in low-res domain.
@@ -509,7 +509,7 @@ def compute_frame_shift_values(img_path, maxima_points, minima_points, z_stamp_d
     return z_stamp_optimal, z_stamp_optimal_resized
 
 
-def compute_frame_shift_values_xz(img_path, maxima_points, minima_points, z_stamp_det, x_end, height, y_end, width, ref_frame_no):
+def compute_frame_shift_values_yz(img_path, maxima_points, minima_points, z_stamp_det, x_end, height, y_end, width, ref_frame_no):
     '''
     Compute optimal z stamp values for entire image sequence.
     '''
@@ -550,7 +550,7 @@ def compute_frame_shift_values_xz(img_path, maxima_points, minima_points, z_stam
             y_start_resized_frame = y_end_resized_frame - width_resized
 
             # TODO: Run as spawned thread
-            calculate_frame_optimal_shift_xz(
+            calculate_frame_optimal_shift_yz(
                 img_path, frame_no,
                 ref_frame_window,
                 x_start_resized,
@@ -675,7 +675,7 @@ def z_stamping_step(kymo_path, frame_count, phase_img_path, use_old=False, dataf
     return (z_stamp_opt, z_stamp_cf, res, bad_zooks, minp)
 
 
-def z_stamping_step_xz(kymo_path, frame_count, phase_img_path, use_old=False, datafile_name='z_stamp_opt.pkl', datafile_name_x='x_stamp_opt.pkl'):
+def z_stamping_step_yz(kymo_path, frame_count, phase_img_path, use_old=False, datafile_name='z_stamp_opt.pkl', datafile_name_x='x_stamp_opt.pkl'):
     '''
     Single function to handle entire z stamping step
     '''
@@ -692,7 +692,7 @@ def z_stamping_step_xz(kymo_path, frame_count, phase_img_path, use_old=False, da
     z_stamp_det = compute_ideal_zstamp(z_stage_data, maxp, minp, ref_frame_no)
 
     if not use_old:
-        z_stamp_opt, x_stamp_opt = compute_frame_shift_values_xz(phase_img_path, maxp, minp, z_stamp_det, x_end, height, y_end, width, ref_frame_no)
+        z_stamp_opt, x_stamp_opt = compute_frame_shift_values_yz(phase_img_path, maxp, minp, z_stamp_det, x_end, height, y_end, width, ref_frame_no)
 
         # TODO: Save as csv as well
         pickle_object(z_stamp_opt, datafile_name, dumptype='pkl')
@@ -748,7 +748,7 @@ def shift_frames_and_store(img_path, z_stamps, discarded_zooks_list, minima_poin
                 preserve_range=True
             )
 
-            if True:
+            if setting['validTiff']:
                 cropped_frame_downsized = cropped_frame_downsized.astype('uint16')
 
             if setting['plot_steps']:
@@ -759,7 +759,7 @@ def shift_frames_and_store(img_path, z_stamps, discarded_zooks_list, minima_poin
     pickle_object(processed_frame_list, 'processed_frame_list.pkl', dumptype='pkl')
 
 
-def shift_frames_and_store_xz(img_path, z_stamps, x_stamps, discarded_zooks_list, minima_points, x_end, height, y_end, width, ref_frame_no, mask_path=''):
+def shift_frames_and_store_yz(img_path, z_stamps, x_stamps, discarded_zooks_list, minima_points, x_end, height, y_end, width, ref_frame_no, mask_path=''):
     bad_zooks = [bz[0] for bz in discarded_zooks_list]
 
     height_resized = height * setting['resampling_factor']
@@ -817,7 +817,7 @@ if __name__ == '__main__':
     settings_json = 'D:\\Scripts\\MaPS\\MaPS scripts\\maps\\current_inputs.json'
 
     # Initialize the settings object
-    reload_current_settings(settings_json)
+    read_setting_from_json(settings_json)
 
     setting['ignore_zooks_at_start'] = 1
     setting['ignore_startzook'] = 7

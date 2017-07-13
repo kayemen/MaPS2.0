@@ -10,7 +10,7 @@ from maps.core.z_stamping import load_kymograph,\
     compute_ideal_zstamp\
 
 # from maps.core.z_stamping import z_stamping_step, shift_frames_and_store
-from maps.settings import reload_current_settings, setting
+from maps.settings import read_setting_from_json, setting
 from maps.helpers.misc import pickle_object
 from maps.helpers.img_proccessing import corr2
 from maps.helpers.tiffseriesimport import writetiff
@@ -30,7 +30,7 @@ logger = logging.getLogger('MaPS')
 settings_json = 'D:\\Scripts\\MaPS\\MaPS scripts\\maps\\current_inputs.json'
 
 # Initialize the settings object
-reload_current_settings(settings_json)
+read_setting_from_json(settings_json)
 
 # Number of zooks to skip from the start#
 setting['ignore_zooks_at_start'] = 1

@@ -1,11 +1,11 @@
 import matplotlib.pyplot as plt
 
 from maps.core.z_stamping import z_stamping_step,\
-    z_stamping_step_xz,\
+    z_stamping_step_yz,\
     shift_frames_and_store,\
-    shift_frames_and_store_xz
+    shift_frames_and_store_yz
 from maps.helpers.logging_config import logger_config
-from maps.settings import reload_current_settings, setting
+from maps.settings import read_setting_from_json, setting
 from maps.helpers.misc import pickle_object
 from maps.helpers.gui_modules import load_image_sequence, max_heartsize_frame, get_rect_params, masking_window_frame
 
@@ -20,7 +20,7 @@ logger = logging.getLogger('MaPS')
 settings_json = 'D:\\Scripts\\MaPS\\MaPS scripts\\maps\\current_inputs.json'
 
 # Initialize the settings object
-reload_current_settings(settings_json)
+read_setting_from_json(settings_json)
 
 # Number of zooks to skip from the start#
 setting['ignore_zooks_at_start'] = 1
@@ -121,7 +121,7 @@ raw_input('Press enter to continue...')
 # the location of phase stamping images and an optional flag (whether to
 # recompute z stamp values or used pickled values)
 
-z_stamp_opt, x_stamp_opt, z_stamp_cf, res, bad_zooks, minp = z_stamping_step_xz(
+z_stamp_opt, x_stamp_opt, z_stamp_cf, res, bad_zooks, minp = z_stamping_step_yz(
     kymo_path=kymograph_path,
     frame_count=frame_count,
     phase_img_path=phase_image_folder,
@@ -199,5 +199,5 @@ raw_input('Press enter to continue...')
 # STEP 4: Shift and crop the frames
 # Shift and store the frames in the good zooks
 
-shift_frames_and_store_xz(phase_image_folder, z_stamp_opt, x_stamp_opt, [], minp, x_end, height, y_end, width, frame_no)
+shift_frames_and_store_yz(phase_image_folder, z_stamp_opt, x_stamp_opt, [], minp, x_end, height, y_end, width, frame_no)
 # shift_frames_and_store(phase_image_folder, z_stamp_opt, [], minp, x_end, height, y_end, width, frame_no)

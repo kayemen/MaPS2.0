@@ -200,7 +200,7 @@
         "type": "int"
     },
     {
-        "description": "Verical shift limit",
+        "description": "Vertical shift limit",
         "varname": "slide_limit_x",
         "value": "10",
         "helptext": "",
@@ -230,5 +230,13 @@
         "helptext": "",
         "hidden": false,
         "type": "int"
+    },
+    {
+        "description": "Store valid TIFF files",
+        "varname": "validTiff",
+        "value": "True",
+        "helptext": "",
+        "hidden": true,
+        "type": "bool"
     }
 ]

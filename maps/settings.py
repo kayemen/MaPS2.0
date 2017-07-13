@@ -1,6 +1,7 @@
 # File containing default values for use in MaPS
-import json
 import os
+import json
+import csv
 # import get_inputs
 
 BASE_DIR = os.path.dirname(__file__)
@@ -8,7 +9,7 @@ BASE_DIR = os.path.dirname(__file__)
 setting = {}
 
 
-def reload_current_settings(setting_json_path=os.path.join(BASE_DIR, 'current_inputs.json')):
+def read_setting_from_json(setting_json_path=os.path.join(BASE_DIR, 'current_inputs.json')):
     global setting
 
     setting_json = json.load(open(setting_json_path))
@@ -36,5 +37,18 @@ def reload_current_settings(setting_json_path=os.path.join(BASE_DIR, 'current_in
             setting[varobj] = None
 
 
+def write_settings_to_json(setting_objs, setting_json_path=os.path.join(BASE_DIR, 'current_inputs.json')):
+    pass
+
+
 def get_setting_list():
     return setting.keys()
+
+
+def read_setting_from_csv(csv_name):
+    with open(csv_name) as csv_file:
+        setting_csv = csv.DictReader(csv_file)
+
+
+def write_setting_to_csv(setting_obj, csv_file_name=os.path.join(BASE_DIR, 'current_inputs.csv')):
+    pass

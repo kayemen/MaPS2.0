@@ -14,7 +14,7 @@ from maps.helpers.img_proccessing import corr2, ssim2
 from maps.helpers.misc import pickle_object,\
     unpickle_object,\
     make_or_clear_directory
-from maps.settings import setting, reload_current_settings
+from maps.settings import setting, read_setting_from_json
 from maps.helpers.gui_modules import cv2_methods
 
 
@@ -56,7 +56,9 @@ def chunked_dwt_resize(dwt_array, resize_factor, chunk_size=400):
     tempres = resize(
         dwt_array[:, :, 0: chunk_size + overlap],
         (hght, wdth, (chunk_size + overlap) * resize_factor),
-        preserve_range=True
+        preserve_range=True,
+        order=5,
+        clip=False
     )
     resized_dwt[:, :, : chunk_size * resize_factor] = tempres[:, :, :-(overlap * resize_factor)]
     del tempres
@@ -66,11 +68,12 @@ def chunked_dwt_resize(dwt_array, resize_factor, chunk_size=400):
         start_frame = i * chunk_size - overlap
         end_frame = (i + 1) * chunk_size + overlap
 
-
         tempres = resize(
             dwt_array[:, :, start_frame:end_frame],
             (hght, wdth, (chunk_size + 2 * overlap) * resize_factor),
-            preserve_range=True
+            preserve_range=True,
+            order=5,
+            clip=False
         )
 
         resized_dwt[:, :, i * chunk_size * resize_factor: (i + 1) * chunk_size * resize_factor] = tempres[:, :, overlap * resize_factor:-overlap * resize_factor]
@@ -80,7 +83,9 @@ def chunked_dwt_resize(dwt_array, resize_factor, chunk_size=400):
     tempres = resize(
         dwt_array[:, :, -(chunk_size + overlap):],
         (hght, wdth, (chunk_size + overlap) * resize_factor),
-        preserve_range=True
+        preserve_range=True,
+        order=5,
+        clip=False
     )
     resized_dwt[:, :, -chunk_size * resize_factor:] = tempres[:, :, overlap * resize_factor:]
     del tempres
@@ -100,7 +105,9 @@ def upsample_dwt_array(dwt_array):
                 dwt_array.shape[1],
                 dwt_array.shape[2] * setting['time_resampling_factor']
             ),
-            preserve_range=True
+            preserve_range=True,
+            order=5,
+            clip=False
         )
     else:
         dwt_array = chunked_dwt_resize(
@@ -109,6 +116,10 @@ def upsample_dwt_array(dwt_array):
             chunk_size=100
         )
     return dwt_array
+
+
+def read_dwt_matrix(read_from):
+    pass
 
 
 def write_dwt_matrix(dwt_matrix, write_to, frame_indices, validTiff=False):
@@ -141,60 +152,68 @@ def compute_dwt_matrix(img_path, frame_indices, write_to=None, upsample=False, p
 
     if upsample:
         dwt_array = upsample_dwt_array(dwt_array)
+        plt.imshow(dwt_array[:, :, 0], cmap='gray')
+        plt.show()
 
     if write_to:
-        write_dwt_matrix(dwt_array, write_to, range(dwt_array.shape[2]))
-    # pickle_object(dwt_array, 'dwt_array.pkl', dumptype='pkl')
+        write_dwt_matrix(dwt_array, write_to, range(dwt_array.shape[2]), validTiff=True)
+    pickle_object(dwt_array, pkl_file_name, dumptype='pkl')
 
     return dwt_array
 
 
-def compute_heartbeat_length(img_path, frame_indices, method='corr', comparison_plot=True, im_fps=480, nperseg=3000):
-    color = iter(plt.cm.rainbow(np.linspace(0, 1, int(1000))))
+def compute_heartbeat_length(dwt_array, method='ccoeff_norm', comparison_plot=True, im_fps=480, nperseg=3000):
+    '''
+    Compute the length of the heartbeat. Uses the DWT of the
+    '''
+    color = iter(plt.cm.rainbow(np.linspace(0, 1, int(dwt_array.shape[2]))))
 
     time_taken = []
 
     hb_array = []
-    for ref_frame in frame_indices[:100]:
-        first_image = importtiff(img_path, ref_frame)
+    # TODO
+    for ref_frame in range(dwt_array.shape[2])[:100]:
+        first_image = dwt_array[:, :, ref_frame]
         # plt.imshow(first_image)
         # plt.show()
         tic = time.time()
         x = []
-        for i in frame_indices:
-            second_image = importtiff(img_path, i)
-            # # Corr2 method
-            # x.append(corr2(first_image, second_image))
-            # # SSIM
-            # x.append(ssim2(first_image, second_image))
-            # # Abs Diff
-            # # Will require filtering
-            # x.append(np.sum(np.absolute(first_image - second_image)))
+        for i in range(dwt_array.shape[2]):
+            second_image = dwt_array[:, :, i]
+            # Corr2 method
+            if method == 'corr':
+                x.append(corr2(first_image, second_image))
+            # SSIM
+            elif method == 'ssim':
+                x.append(ssim2(first_image, second_image))
+            # Abs Diff
+            # Will require filtering
+            elif method == 'sad':
+                x.append(np.sum(np.absolute(first_image - second_image)))
             # OpenCV methods ccorr, ccoeff
-            x.append(cv2.matchTemplate(second_image.astype('float32'), first_image.astype('float32'), cv2_methods['ccoeff_norm'])[0][0])
-            # # OpenCV MSE
-            # x.append(cv2.matchTemplate(second_image.astype('float32'), first_image.astype('float32'), eval(cv2_methods[1]))[0][0])
+            elif method in ('ccoeff_norm', 'ccorr_norm', 'mse_norm'):
+                x.append(cv2.matchTemplate(second_image.astype('float32'), first_image.astype('float32'), cv2_methods[method])[0][0])
             # print x
             # raw_input()
         time_taken.append(time.time() - tic)
         # print x
 
         # For absdiff and MSE
+        # if method in ('sad', 'mse_norm'):
         x = np.asarray(x)
-        # x = np.max(x) - x
-
-        if comparison_plot:
-            plt.figure(211)
-            plt.plot(x)
-            comparison_plot = False
+        x = np.max(x) - x
 
         f, Pxx = signal.welch(x, im_fps, nperseg=nperseg)
 
         # print f
         t = im_fps / f
-        # print f
+        if comparison_plot:
+            plt.figure(211)
+            plt.plot(x)
+            print t[np.argmax(Pxx) - 10: np.argmax(Pxx) + 10]
+            comparison_plot = False
         # raw_input()
-        Pxx[np.where(t > 50)] = 0
+        Pxx[np.where(t > 400)] = 0
         hb_array.append(t[np.argmax(Pxx)])
         plt.figure(212)
         cl = next(color)
@@ -210,35 +229,35 @@ def compute_heartbeat_length(img_path, frame_indices, method='corr', comparison_
     return cm_hb[0]
 
 
-def compute_canonical_heartbeat(img_path, frame_indices, mean_hb_period):
+def compute_canonical_heartbeat(dwt_array, mean_hb_period, sad_matrix_pkl_name='sad_matrix.pkl'):
     '''
     Processes interpolated frame wavelets. find the best continuous sequence of heartbeats
     '''
     # Populating SAD matrix
     use_pickled_sad = False
 
-    sad_matrix = np.zeros((len(frame_indices), len(frame_indices)))
+    sad_matrix = np.zeros((dwt_array.shape[2], dwt_array.shape[2]))
 
     threshold = 0.02
 
     if use_pickled_sad:
-        sad_matrix = unpickle_object('sad_matrix.pkl')
+        sad_matrix = unpickle_object(sad_matrix_pkl_name)
     else:
         time_taken = []
-        for i in range(len(frame_indices)):
-            ref_dwt = importtiff(img_path, i)
+        for i in range(dwt_array.shape[2]):
+            # TODO: Threads
+            ref_dwt = dwt_array[:, :, i]
             print 'Processing frame %d' % i
             tic = time.time()
-            for j in range(len(frame_indices)):
-                if j >= i:
-                    curr_dwt = importtiff(img_path, j)
-                    sad_matrix[i, j] = sad_matrix[j, i] = np.sum(
-                        np.absolute(ref_dwt - curr_dwt)
-                    )
+            for j in range(i, dwt_array.shape[2]):
+                curr_dwt = dwt_array[:, :, j]
+                sad_matrix[i, j] = sad_matrix[j, i] = np.sum(
+                    np.absolute(ref_dwt - curr_dwt)
+                )
             time_taken.append(time.time() - tic)
             print time_taken[-1]
 
-        pickle_object(sad_matrix, 'sad_matrix.pkl')
+        pickle_object(sad_matrix, sad_matrix_pkl_name)
 
     # print sad_matrix.shape
     # print np.max(sad_matrix)
@@ -316,7 +335,7 @@ if __name__ == '__main__':
     settings_json = 'D:\\Scripts\\MaPS\\MaPS scripts\\maps\\current_inputs.json'
 
     # Initialize the settings object
-    reload_current_settings(settings_json)
+    read_setting_from_json(settings_json)
 
     setting['ignore_zooks_at_start'] = 0
     # setting['ignore_startzook'] = 0
@@ -324,6 +343,7 @@ if __name__ == '__main__':
     setting['BF_resolution'] = 0.6296
     setting['image_prefix'] = 'FRAMEX'
     setting['bf_period_path'] = 'D:\\Scripts\\MaPS\\Data sets\\Phase_cropped_old\\'
+    setting['bf_period_dwt_path'] = 'D:\\Scripts\\MaPS\\Data sets\\Upsampled_BF_DWT'
     setting['data_dump'] = 'D:\\Scripts\\MaPS\\Data sets\\Raw data\\'
     setting['resampling_factor'] = 5
     setting['slide_limit'] = 5
@@ -335,13 +355,21 @@ if __name__ == '__main__':
     with open(os.path.join(setting['data_dump'], 'processed_frame_list.pkl')) as pkfp:
         frames = pickle.load(pkfp)
 
-    compute_dwt_matrix(setting['bf_period_path'], frames[:], write_to=setting['bf_period_dwt_path'], upsample=True)
-    # raw_input('Press enter....')
-    compute_heartbeat_length(setting['bf_period_dwt_path'], frames[:], comparison_plot=False)
+    COMPUTE_DWT = True
+
+    if COMPUTE_DWT:
+        d = compute_dwt_matrix(setting['bf_period_path'], frames[:500],
+                               #    write_to=setting['bf_period_dwt_path'],
+                               upsample=True)
+    else:
+        d = unpickle_object('dwt_array.pkl')
+
+    # cm_hb = compute_heartbeat_length(d[:, :, 2:-2], comparison_plot=True, nperseg=50000)
+    cm_hb = 94
 
     # print frames
     # compute_dwt_matrix(setting['bf_crop_path'], frames[:728], write_to=setting['bf_us_dwt_path'], pkl_file_name='dwt_array_bf_us.pkl', upsample=True)
-    # canonical_hb_start = compute_canonical_heartbeat(setting['bf_us_dwt_path'], range(2911), 102)
-
-    # canonical_hb_frames = frames[canonical_hb_start: canonical_hb_start + 102]
-    # print canonical_hb_frames
+    canonical_hb_start = compute_canonical_heartbeat(d[:, :, 2:-2], np.round(cm_hb).astype('int'))
+    # #
+    canonical_hb_frames = frames[canonical_hb_start: canonical_hb_start + np.round(cm_hb).astype('int')]
+    print canonical_hb_frames
