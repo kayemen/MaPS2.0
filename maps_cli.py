@@ -5,7 +5,7 @@ from maps.core.z_stamping import z_stamping_step,\
     shift_frames_and_store,\
     shift_frames_and_store_yz
 from maps.helpers.logging_config import logger_config
-from maps.settings import read_setting_from_json, setting
+from maps.settings import BASE_DIR, read_setting_from_json, setting
 from maps.helpers.misc import pickle_object
 from maps.helpers.gui_modules import load_image_sequence, max_heartsize_frame, get_rect_params, masking_window_frame
 
@@ -17,10 +17,10 @@ logging.config.dictConfig(logger_config)
 logger = logging.getLogger('MaPS')
 
 # Path to settings json for preloading settings
-settings_json = 'D:\\Scripts\\MaPS\\MaPS scripts\\maps\\current_inputs.json'
+settings_json = os.path.join(BASE_DIR, 'current_inputs.json')
 
 # Initialize the settings object
-read_setting_from_json(settings_json)
+read_setting_from_json('job1', settings_json)
 
 # Number of zooks to skip from the start#
 setting['ignore_zooks_at_start'] = 1
@@ -32,8 +32,6 @@ setting['ignore_endzook'] = 3
 setting['BF_resolution'] = 0.6296
 # Prefix of image file names
 setting['image_prefix'] = 'Phase_Bidi1_'
-# Location of raw data dump. This includes pickled objects, csv files and plots
-setting['data_dump'] = 'D:\\Scripts\\MaPS\\Data sets\\Raw data\\'
 # Upsampling factor while finding optimal z stamp
 setting['resampling_factor'] = 5
 # Horizontal width of window within which best correlation is to be found (in
@@ -52,7 +50,7 @@ setting['first_minima'] = 0
 kymograph_path = 'D:\Scripts\MaPS\Data sets\Kymographs\KM-XZ_0.tif'
 
 # Number of frames to process
-frame_count = 59999
+setting['frame_count'] = 1000
 
 # Folder containing brightfield images for phase stamping. The images must be
 # named sequentially
@@ -74,7 +72,7 @@ USE_GUI_CROP_WINDOW = False
 frame_no = 21
 
 img_path = glob.glob(
-os.path.join(phase_image_folder, '*.tif')
+    os.path.join(phase_image_folder, '*.tif')
 )
 
 if USE_GUI_CORR_WINDOW and not use_existing_datadump_vals:
@@ -122,12 +120,12 @@ raw_input('Press enter to continue...')
 # recompute z stamp values or used pickled values)
 
 z_stamp_opt, x_stamp_opt, z_stamp_cf, res, bad_zooks, minp = z_stamping_step_yz(
-    kymo_path=kymograph_path,
-    frame_count=frame_count,
-    phase_img_path=phase_image_folder,
-    use_old=use_existing_datadump_vals,
+    kymo_path=setting['km_path'],
+    frame_count=setting['frame_count'],
+    phase_img_path=setting['bf_images'],
+    use_old=setting['usePickled'],
     datafile_name='z_stamp_opt_KM-XZ_0.pkl',
-    datafile_name_x='x_stamp_opt_KM-XZ_0.pkl'
+    datafile_name_x='y_stamp_opt_KM-XZ_0.pkl'
 )
 # z_stamp_opt, z_stamp_cf, res, bad_zooks, minp = z_stamping_step(
 #     kymo_path=kymograph_path,

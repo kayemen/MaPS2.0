@@ -11,14 +11,6 @@ import uuid
 logger = logging.getLogger('maps.helper.misc')
 
 
-def make_or_clear_directory(path):
-    if os.path.isdir(path):
-        logger.debug('Clearing directory - %s' % path)
-        shutil.rmtree(path)
-    logger.debug('Creating directory - %s' % path)
-    os.makedirs(path)
-
-
 def unpickle_object(file_name, dumptype='pkl'):
     '''
     Load data from file.
@@ -30,9 +22,9 @@ def unpickle_object(file_name, dumptype='pkl'):
     INPUTS:
         data(LIST): List of tuples of row data
     '''
-    data_dump = setting['data_dump']
+    workspace = setting['workspace']
 
-    final_path = os.path.join(data_dump, file_name)
+    final_path = os.path.join(workspace, file_name)
 
     if not final_path.endswith(dumptype):
         final_path = '%s.%s' % (final_path, dumptype)
@@ -46,7 +38,7 @@ def unpickle_object(file_name, dumptype='pkl'):
     return data
 
 
-def pickle_object(data, file_name=None, dumptype='pkl'):
+def pickle_object(data, file_name, dumptype='pkl'):
     '''
     Dump data to file.
     Dumps as pkl format by default
@@ -57,12 +49,9 @@ def pickle_object(data, file_name=None, dumptype='pkl'):
     INPUTS:
         data(LIST): List of tuples of row data
     '''
-    data_dump = setting['data_dump']
+    workspace = setting['workspace']
 
-    if file_name is None or file_name == '':
-        file_name = '%s.%s' % (str(uuid.uuid4()), dumptype)
-
-    final_path = os.path.join(data_dump, file_name)
+    final_path = os.path.join(workspace, file_name)
 
     if not final_path.endswith(dumptype):
         final_path = '%s.%s' % (final_path, dumptype)
@@ -88,4 +77,5 @@ def pickle_object(data, file_name=None, dumptype='pkl'):
 
 
 if __name__ == '__main__':
-    make_or_clear_directory('./test')
+    pass
+    # make_or_clear_directory('./test')
