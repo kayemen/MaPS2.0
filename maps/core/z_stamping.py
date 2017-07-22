@@ -9,7 +9,8 @@ from skimage.transform import resize
 
 from maps.helpers.tiffseriesimport import importtiff, writetiff
 from maps.helpers.img_proccessing import corr2
-from maps.helpers.misc import pickle_object, make_or_clear_directory
+from maps.helpers.gui_modules import load_frame, extract_window
+from maps.helpers.misc import pickle_object, unpickle_object
 from maps.settings import setting
 
 import os
@@ -28,7 +29,7 @@ logger = logging.getLogger(__name__)
 # setting['ignore_endzook'] = 3  # setting#
 # setting['BF_resolution'] = 0.6296  # setting#
 # setting['image_prefix'] = 'Phase_Bidi1_'  # setting#
-# setting['data_dump'] = 'D:\\Scripts\\MaPS\\Data sets\\Raw data\\'  # setting#
+# setting['workspace'] = 'D:\\Scripts\\MaPS\\Data sets\\Raw data\\'  # setting#
 # setting['resampling_factor'] = 5  # setting#
 # setting['slide_limit'] = 5  # setting#
 # setting['ZookZikPeriod'] = 192  # setting#

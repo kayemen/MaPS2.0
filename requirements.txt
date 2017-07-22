@@ -14,11 +14,9 @@ Kivy-examples==1.10.0
 Kivy-Garden==0.1.4
 kivy.deps.glew==0.1.9
 kivy.deps.sdl2==0.1.17
-matplotlib==2.0.2
 networkx==1.11
-numpy==1.11.3+mkl
-olefile==0.44
 openpyxl==2.4.8
+olefile==0.44
 packaging==16.8
 pandas==0.20.1
 Pillow==4.1.1
@@ -29,8 +27,5 @@ python-dateutil==2.6.0
 pytz==2017.2
 PyWavelets==0.5.2
 requests==2.17.3
-scikit-image==0.13.0
-scikit-learn==0.18.1
-scipy==0.19.0
 six==1.10.0
 urllib3==1.21.1

@@ -1,242 +1,258 @@
 [
-    {
-        "description": "Raw data file dump location",
-        "varname": "data_dump",
-        "value": "D:\\Scripts\\MaPS\\Data sets\\Raw data",
-        "helptext": "",
-        "hidden": false,
-        "type": "path"
-    },
-    {
-        "description": "Kymograph folder location",
-        "varname": "km_path",
-        "value": "D:\\Scripts\\MaPS\\Data sets\\Kymographs",
-        "helptext": "",
-        "hidden": false,
-        "type": "path"
-    },
-    {
-        "description": "Phase-stamping frames folder",
-        "varname": "bf_path",
-        "value": "D:\\Scripts\\MaPS\\Data sets\\Phase_Bidi",
-        "helptext": "",
-        "hidden": false,
-        "type": "path"
-    },
-    {
-        "description": "Cropped Phase frames folder",
-        "varname": "bf_crop_path",
-        "value": "D:\\Scripts\\MaPS\\Data sets\\Phase_cropped_old",
-        "helptext": "",
-        "hidden": false,
-        "type": "path"
-    },
-    {
-        "description": "Phase frames DWT folder",
-        "varname": "bf_dwt_path",
-        "value": "D:\\Scripts\\MaPS\\Data sets\\Phase_DWT",
-        "helptext": "",
-        "hidden": false,
-        "type": "path"
-    },
-    {
-        "description": "Upsampled phase frames DWT folder",
-        "varname": "bf_us_dwt_path",
-        "value": "D:\\Scripts\\MaPS\\Data sets\\Upsampled_BF_DWT",
-        "helptext": "",
-        "hidden": false,
-        "type": "path"
-    },
-    {
-        "description": "Name prefix of phase stamping images",
-        "varname": "image_prefix",
-        "value": "Phase_Bidi1_",
-        "helptext": "",
-        "hidden": false,
-        "type": "str"
-    },
-    {
-        "description": "Starting index of phase image names",
-        "varname": "index_start_at",
-        "value": "1",
-        "helptext": "",
-        "hidden": false,
-        "type": "int"
-    },
-    {
-        "description": "Number of digits in image name",
-        "varname": "num_digits",
-        "value": "5",
-        "helptext": "",
-        "hidden": false,
-        "type": "int"
-    },
-    {
-        "description": "Location of first minima in kymograph",
-        "varname": "first_minima",
-        "value": "0",
-        "helptext": "",
-        "hidden": true,
-        "type": "int"
-    },
-    {
-        "description": "Use pickled values in z stamping",
-        "varname": "use_pkl_zstamp",
-        "value": "False",
-        "helptext": "",
-        "hidden": true,
-        "type": "bool"
-    },
-    {
-        "description": "Plot steps",
-        "varname": "plot_steps",
-        "value": "False",
-        "helptext": "",
-        "hidden": true,
-        "type": "bool"
-    },
-    {
-        "description": "Phase-stamping frame count",
-        "varname": "bf_framecount",
-        "value": "999",
-        "helptext": "",
-        "hidden": false,
-        "type": "int"
-    },
-    {
-        "description": "Phase FPS",
-        "varname": "bf_fps",
-        "value": "0",
-        "helptext": "",
-        "hidden": false,
-        "type": "int"
-    },
-    {
-        "description": "Stationary brightfield images folder",
-        "varname": "bf_period_path",
-        "value": "D:\\Scripts\\MaPS\\Data sets\\Stat_frames",
-        "helptext": "",
-        "hidden": false,
-        "type": "path"
-    },
-    {
-        "description": "Stationary frames DWT folder",
-        "varname": "bf_period_dwt_path",
-        "value": "D:\\Scripts\\MaPS\\Data sets\\Stat_DWT",
-        "helptext": "",
-        "hidden": false,
-        "type": "path"
-    },
-    {
-        "description": "Phase resolution",
-        "varname": "BF_resolution",
-        "value": "0.6296",
-        "helptext": "",
-        "hidden": false,
-        "type": "float"
-    },
-    {
-        "description": "Fluorescent frames folder",
-        "varname": "fm_path",
-        "value": "",
-        "helptext": "",
-        "hidden": false,
-        "type": "path"
-    },
-    {
-        "description": "Fluorescent FPS",
-        "varname": "fm_fps",
-        "value": "0",
-        "helptext": "",
-        "hidden": false,
-        "type": "int"
-    },
-    {
-        "description": "Approximate Frames per heartbeat",
-        "varname": "fphb",
-        "value": "30",
-        "helptext": "",
-        "hidden": false,
-        "type": "int"
-    },
-    {
-        "description": "Frames per zook",
-        "varname": "ZookZikPeriod",
-        "value": "192",
-        "helptext": "",
-        "hidden": false,
-        "type": "int"
-    },
-    {
-        "description": "Zooks for canonical sampling",
-        "varname": "canonical_zook_count",
-        "value": "10",
-        "helptext": "",
-        "hidden": false,
-        "type": "int"
-    },
-    {
-        "description": "Spatial Resampling factor",
-        "varname": "resampling_factor",
-        "value": "5",
-        "helptext": "",
-        "hidden": false,
-        "type": "int"
-    },
-    {
-        "description": "Temporal Resampling factor",
-        "varname": "time_resampling_factor",
-        "value": "4",
-        "helptext": "",
-        "hidden": false,
-        "type": "int"
-    },
-    {
-        "description": "Local shift limit",
-        "varname": "slide_limit",
-        "value": "5",
-        "helptext": "",
-        "hidden": false,
-        "type": "int"
-    },
-    {
-        "description": "Vertical shift limit",
-        "varname": "slide_limit_x",
-        "value": "10",
-        "helptext": "",
-        "hidden": false,
-        "type": "int"
-    },
-    {
-        "description": "Initial intrazook frames discarded",
-        "varname": "ignore_startzook",
-        "value": "7",
-        "helptext": "",
-        "hidden": false,
-        "type": "int"
-    },
-    {
-        "description": "Final intrazook frames discarded",
-        "varname": "ignore_endzook",
-        "value": "3",
-        "helptext": "",
-        "hidden": false,
-        "type": "int"
-    },
-    {
-        "description": "Initial zooks discarded",
-        "varname": "ignore_zooks_at_start",
-        "value": "1",
-        "helptext": "",
-        "hidden": false,
-        "type": "int"
-    },
-    {
-        "description": "Store valid TIFF files",
-        "varname": "validTiff",
-        "value": "True",
-        "helptext": "",
-        "hidden": true,
-        "type": "bool"
-    }
+  {
+    "description": "Kymograph folder name",
+    "varname": "km_path",
+    "value": "Kymographs",
+    "helptext": "",
+    "hidden": false,
+    "type": "path"
+  },
+  {
+    "description": "Brightfield Images",
+    "varname": "bf_images",
+    "value": "Phase_Bidi",
+    "helptext": "",
+    "hidden": false,
+    "type": "path"
+  },
+  {
+    "description": "Cropped Brightfield Images",
+    "varname": "cropped_bf_images",
+    "value": "Phase_images_cropped",
+    "helptext": "",
+    "hidden": false,
+    "type": "path"
+  },
+  {
+    "description": "Brightfield Images DWT",
+    "varname": "bf_images_dwt",
+    "value": "Phase_images_DWT",
+    "helptext": "",
+    "hidden": false,
+    "type": "path"
+  },
+  {
+    "description": "Brightfield Images interpolated DWT",
+    "varname": "bf_images_dwt_upsampled",
+    "value": "Phase_images_DWT_upsampled",
+    "helptext": "",
+    "hidden": false,
+    "type": "path"
+  },
+  {
+    "description": "Stationary Images cropped",
+    "varname": "stat_images_cropped",
+    "value": "Stationary_images_cropped",
+    "helptext": "",
+    "hidden": false,
+    "type": "path"
+  },
+  {
+    "description": "Stationary Images interpolated DWT",
+    "varname": "stat_images_dwt_upsampled",
+    "value": "Stationary_images_DWT_upsampled",
+    "helptext": "",
+    "hidden": false,
+    "type": "path"
+  },
+  {
+    "description": "Canonical heartbeat frames",
+    "varname": "canon_frames",
+    "value": "Canonical_heartbeat_frames",
+    "helptext": "",
+    "hidden": false,
+    "type": "path"
+  },
+  {
+    "description": "Fluorescent images",
+    "varname": "fm_images",
+    "value": "Fluorescence_Bidi_1",
+    "helptext": "",
+    "hidden": false,
+    "type": "str"
+  },
+  {
+    "description": "Stamped images",
+    "varname": "final_images",
+    "value": "Final_imageset",
+    "helptext": "",
+    "hidden": false,
+    "type": "path"
+  },
+  {
+    "description": "Workspace folder name",
+    "varname": "workspace",
+    "value": "Workspace",
+    "helptext": "",
+    "hidden": false,
+    "type": "path"
+  },
+  {
+    "description": "Brightfield image prefix",
+    "varname": "image_prefix",
+    "value": "Phase_Bidi1_",
+    "helptext": "",
+    "hidden": false,
+    "type": "str"
+  },
+  {
+    "description": "Brightfield FPS",
+    "varname": "bf_fps",
+    "value": "100",
+    "helptext": "",
+    "hidden": false,
+    "type": "int"
+  },
+  {
+    "description": "Moving frames index start",
+    "varname": "index_start_at",
+    "value": "4001",
+    "helptext": "",
+    "hidden": false,
+    "type": "int"
+  },
+  {
+    "description": "Moving frames count",
+    "varname": "frame_count",
+    "value": "10000",
+    "helptext": "",
+    "hidden": false,
+    "type": "int"
+  },
+  {
+    "description": "Stationary frames index start",
+    "varname": "stat_index_start_at",
+    "value": "1",
+    "helptext": "",
+    "hidden": false,
+    "type": "int"
+  },
+  {
+    "description": "Stationary frames count",
+    "varname": "stat_frame_count",
+    "value": "4000",
+    "helptext": "",
+    "hidden": false,
+    "type": "int"
+  },
+  {
+    "description": "Number of digits in filename",
+    "varname": "num_digits",
+    "value": "5",
+    "helptext": "",
+    "hidden": false,
+    "type": "int"
+  },
+  {
+    "description": "Frames per zook",
+    "varname": "ZookZikPeriod",
+    "value": "192",
+    "helptext": "",
+    "hidden": false,
+    "type": "int"
+  },
+  {
+    "description": "First minima",
+    "varname": "first_minima",
+    "value": "0",
+    "helptext": "",
+    "hidden": false,
+    "type": "int"
+  },
+  {
+    "description": "Spatial remapling factor",
+    "varname": "resampling_factor",
+    "value": "5",
+    "helptext": "",
+    "hidden": false,
+    "type": "int"
+  },
+  {
+    "description": "Temporal remapling factor",
+    "varname": "time_resampling_factor",
+    "value": "4",
+    "helptext": "",
+    "hidden": false,
+    "type": "int"
+  },
+  {
+    "description": "Z shift limit",
+    "varname": "slide_limit",
+    "value": "5",
+    "helptext": "",
+    "hidden": false,
+    "type": "int"
+  },
+  {
+    "description": "Y shift limit",
+    "varname": "y_slide_limit",
+    "value": "10",
+    "helptext": "",
+    "hidden": false,
+    "type": "int"
+  },
+  {
+    "description": "Zook start ignored frames",
+    "varname": "ignore_startzook",
+    "value": "7",
+    "helptext": "",
+    "hidden": false,
+    "type": "int"
+  },
+  {
+    "description": "Zook end ignored frames",
+    "varname": "ignore_endzook",
+    "value": "3",
+    "helptext": "",
+    "hidden": false,
+    "type": "int"
+  },
+  {
+    "description": "Start zook burn-in",
+    "varname": "ignore_zooks_at_start",
+    "value": "1",
+    "helptext": "",
+    "hidden": false,
+    "type": "int"
+  },
+  {
+    "description": "Approximate frames/heartbeat",
+    "varname": "approx_fphb",
+    "value": "1",
+    "helptext": "",
+    "hidden": false,
+    "type": "int"
+  },
+  {
+    "description": "Save valid TIFF for DWT",
+    "varname": "validTiff",
+    "value": "True",
+    "helptext": "",
+    "hidden": true,
+    "type": "bool"
+  },
+  {
+    "description": "Use pickled workspace",
+    "varname": "usePickled",
+    "value": "False",
+    "helptext": "",
+    "hidden": true,
+    "type": "bool"
+  },
+  {
+    "description": "Canonical zook percentage",
+    "varname": "canon_frac",
+    "value": "10",
+    "helptext": "",
+    "hidden": false,
+    "type": "int"
+  },
+  {
+    "description": "Brightfield image physical resolution",
+    "varname": "BF_resolution",
+    "value": "0.6296",
+    "helptext": "",
+    "hidden": false,
+    "type": "float"
+  }
 ]

@@ -12,8 +12,7 @@ import pywt
 from maps.helpers.tiffseriesimport import importtiff, writetiff
 from maps.helpers.img_proccessing import corr2, ssim2
 from maps.helpers.misc import pickle_object,\
-    unpickle_object,\
-    make_or_clear_directory
+    unpickle_object
 from maps.settings import setting, read_setting_from_json
 from maps.helpers.gui_modules import cv2_methods
 

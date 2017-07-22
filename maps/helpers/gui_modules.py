@@ -1,12 +1,31 @@
+from skimage.transform import resize
+
+from maps.helpers.tiffseriesimport import importtiff, writetiff
+from maps.settings import setting
+
 import cv2
 import numpy as np
 import glob
 import time
 
-cv2_methods = {'ccorr_norm': cv2.TM_CCORR_NORMED, 'ccoeff_norm': cv2.TM_CCOEFF_NORMED, 'mse_norm': cv2.TM_SQDIFF_NORMED}
+cv2_methods = {
+    'ccorr_norm': cv2.TM_CCORR_NORMED,
+    'ccoeff_norm': cv2.TM_CCOEFF_NORMED,
+    'mse_norm': cv2.TM_SQDIFF_NORMED
+}
 
-rect_data = {'pt1': (0, 0), 'pt2': (0, 0), 'color': (0, 65535, 0), 'thickness': 2}
-freeform_data = {'ptarray': [], 'color': (0, 65535, 0), 'thickness': 2}
+rect_data = {
+    'pt1': (0, 0),
+    'pt2': (0, 0),
+    'color': (0, 65535, 0),
+    'thickness': 2
+}
+freeform_data = {
+    'ptarray': [],
+    'color': (0, 65535, 0),
+    'thickness': 2
+}
+
 selecting = False
 
 
@@ -206,6 +225,39 @@ def put_rect_params(rect_params, color=(0, 65535, 0), thickness=2):
         'color': color,
         'thickness': thickness
     }
+
+
+def extract_window(frame, x_start, x_end, y_start, y_end):
+    '''
+    Return the ROI from a frame within the bounding box specified by x_start, x_end, y_start, y_end
+    '''
+    frame_win = frame[int(x_start): int(x_end) + 1, int(y_start): int(y_end) + 1]
+    return frame_win
+
+
+def load_frame(img_path, frame_no, upsample=True, crop=False, cropParams=(), index_start_number=None, prefix=None):
+    '''
+    Load the tiff file of the frame, resize (upsample by resampling factor if needed), crop using cropParams if needed and return image array.
+    '''
+    if index_start_number is None:
+        index_start_number = setting['index_start_at']
+    if prefix is None:
+        prefix = setting['image_prefix']
+    img = importtiff(img_path, frame_no, prefix=prefix, index_start_number=index_start_number, num_digits=setting['num_digits'])
+    if upsample:
+        img = resize(
+            img,
+            (
+                img.shape[0] * setting['resampling_factor'],
+                img.shape[1] * setting['resampling_factor']
+            ),
+            preserve_range=True
+        )
+    if crop:
+        img = extract_window(img, *cropParams)
+
+    return img
+
 
 if __name__ == '__main__':
     path_list = glob.glob('../Data sets/Phase_Bidi/*.tif')
