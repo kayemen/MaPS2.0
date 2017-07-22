@@ -14,7 +14,7 @@ from maps.helpers.img_proccessing import corr2, ssim2
 from maps.helpers.misc import pickle_object,\
     unpickle_object
 from maps.settings import setting, read_setting_from_json
-from maps.helpers.gui_modules import cv2_methods
+from maps.helpers.gui_modules import cv2_methods, load_frame
 
 
 import os
@@ -23,8 +23,40 @@ import time
 import csv
 import cv2
 import platform
+import collections
+import threading
 
 logger = logging.getLogger(__name__)
+
+
+def compute_zook_extents(maxima_point, minima_point):
+    '''
+    Function to compute the extent of frames to process in each zook. Added function to clean repeated code. Every zook has some frames ignored at start and end. Given the extent of the zook (start point and end point i.e maxima_point and next minima point) retuns the start and end frame numbers.
+    '''
+    start_slice = minima_point + setting['ignore_startzook']
+    end_slice = maxima_point - setting['ignore_endzook'] + 1
+
+    return (start_slice, end_slice)
+
+
+def load_and_crop_frames(img_path, frame_no, x_start_frame, x_end_frame, y_start_frame, y_end_frame):
+    '''
+    Load the tiff file of the frame, resize (upsample by resampling factor if needed) if needed and return image array.
+    '''
+    # Upsample frame to crop
+    cropped_frame = load_frame(img_path, frame_no, upsample=True, crop=True, cropParams=(x_start_frame, x_end_frame, y_start_frame, y_end_frame), index_start_number=setting['stat_index_start_at'])
+
+    # Downsample frame before returning
+    cropped_frame_downsized = resize(
+        cropped_frame,
+        (
+            cropped_frame.shape[0] / setting['resampling_factor'],
+            cropped_frame.shape[1] / setting['resampling_factor']
+        ),
+        preserve_range=True
+    )
+
+    return cropped_frame_downsized
 
 
 def chunked_dwt_resize(dwt_array, resize_factor, chunk_size=400):
@@ -117,10 +149,6 @@ def upsample_dwt_array(dwt_array):
     return dwt_array
 
 
-def read_dwt_matrix(read_from):
-    pass
-
-
 def write_dwt_matrix(dwt_matrix, write_to, frame_indices, validTiff=False):
     '''
     Write the frames from DWT array to disk. Will write as 64bit float values. Not valid TIFF files
@@ -129,30 +157,96 @@ def write_dwt_matrix(dwt_matrix, write_to, frame_indices, validTiff=False):
     if len(frame_indices) < dwt_matrix.shape[2]:
         pass
         # raise Exception('Insufficient frame indices')
-    if validTiff:
-        dwt_matrix = dwt_matrix.astype('int16')
+    dwt_matrix = dwt_matrix.astype('int16')
     for index, frame_id in enumerate(frame_indices):
         writetiff(dwt_matrix[:, :, index], write_to, index)
 
 
-def compute_dwt_matrix(img_path, frame_indices, write_to=None, upsample=False, pkl_file_name='dwt_array.pkl'):
+def compute_frame_dwt(img_path, frame_id, frame, cropping_params, dwt_array):
+    frame_image = load_and_crop_frames(img_path, frame, *cropping_params)
+    (cA, _) = pywt.dwt2(frame_image, 'db1', mode='sym')
+
+    dwt_array[:, :, frame_id] = cA
+
+
+def compute_dwt_matrix(img_path, frame_indices, crop=False, write_to=None, pkl_file_name='dwt_array.pkl'):
     '''
     Compute the DWT matrix for a sequence of images. Optionally writes the DWT array as images to disk. Also writes as pkl file
     '''
-    first_image = importtiff(img_path, frame_indices[0])
-    (cA, (cH, cV, cD)) = pywt.dwt2(first_image, 'db1', mode='sym')
+    first_image = load_frame(img_path, frame_indices[0])
+    (cA, _) = pywt.dwt2(first_image, 'db1', mode='sym')
 
     dwt_array = np.zeros((cA.shape[0], cA.shape[1], len(frame_indices)))
     for (frame_id, frame) in enumerate(frame_indices):
-        frame_image = importtiff(img_path, frame)
+        frame_image = load_frame(img_path, frame)
         (cA, _) = pywt.dwt2(frame_image, 'db1', mode='sym')
 
         dwt_array[:, :, frame_id] = cA
 
-    if upsample:
-        dwt_array = upsample_dwt_array(dwt_array)
-        plt.imshow(dwt_array[:, :, 0], cmap='gray')
-        plt.show()
+    if write_to:
+        write_dwt_matrix(dwt_array, write_to, range(dwt_array.shape[2]), validTiff=True)
+    pickle_object(dwt_array, pkl_file_name, dumptype='pkl')
+
+    return dwt_array
+
+
+def crop_and_compute_dwt_matrix(img_path, z_stamps, y_stamps, discarded_zooks_list, minima_points, x_end, height, y_end, width, write_to=None, pkl_file_name='dwt_array.pkl'):
+    bad_zooks = [bz[0] for bz in discarded_zooks_list]
+
+    height_resized = height * setting['resampling_factor']
+    width_resized = width * setting['resampling_factor']
+    x_end_resized = x_end * setting['resampling_factor']
+    y_end_resized = y_end * setting['resampling_factor']
+
+    frame_list = []
+    cropping_param_list = []
+
+    for zook in np.arange(setting['ignore_zooks_at_start'], len(minima_points)):
+        if zook in bad_zooks:
+            continue
+        maxima_points = (np.array(minima_points) + setting['ZookZikPeriod'] - 1)
+        start_frame, end_frame = compute_zook_extents(maxima_points[zook], minima_points[zook])
+
+        for frame_no in np.arange(start_frame, end_frame):
+            frame_list.append(frame_no)
+            y_end_frame = y_end_resized + z_stamps[frame_no]
+            y_start_frame = y_end_frame - width_resized
+            x_end_frame = x_end_resized + y_stamps[frame_no]
+            x_start_frame = x_end_frame - width_resized
+
+            cropping_param_list.append(
+                (x_start_frame,
+                 x_end_frame,
+                 y_start_frame,
+                 y_end_frame
+                 )
+            )
+
+    dwt_threads = []
+
+    first_image = load_and_crop_frames(img_path, frame_list[0], *cropping_param_list[0])
+
+    (cA, _) = pywt.dwt2(first_image, 'db1', mode='sym')
+
+    dwt_array = np.zeros((cA.shape[0], cA.shape[1], len(frame_list)))
+    for (frame_id, frame) in enumerate(frame_list):
+        print 'Processing frame #%d' % frame
+        dwt_thread = threading.Thread(
+            target=compute_frame_dwt,
+            args=(
+                img_path,
+                frame_id,
+                frame,
+                cropping_param_list[frame_id],
+                dwt_array
+            )
+        )
+        dwt_thread.start()
+        dwt_threads.append(dwt_thread)
+
+    # Waiting for threads to end
+    for dwt_thread in dwt_threads:
+        dwt_thread.join()
 
     if write_to:
         write_dwt_matrix(dwt_array, write_to, range(dwt_array.shape[2]), validTiff=True)
@@ -173,8 +267,6 @@ def compute_heartbeat_length(dwt_array, method='ccoeff_norm', comparison_plot=Tr
     # TODO
     for ref_frame in range(dwt_array.shape[2])[:100]:
         first_image = dwt_array[:, :, ref_frame]
-        # plt.imshow(first_image)
-        # plt.show()
         tic = time.time()
         x = []
         for i in range(dwt_array.shape[2]):
@@ -186,14 +278,12 @@ def compute_heartbeat_length(dwt_array, method='ccoeff_norm', comparison_plot=Tr
             elif method == 'ssim':
                 x.append(ssim2(first_image, second_image))
             # Abs Diff
-            # Will require filtering
+            # TODO: Will require filtering
             elif method == 'sad':
                 x.append(np.sum(np.absolute(first_image - second_image)))
             # OpenCV methods ccorr, ccoeff
             elif method in ('ccoeff_norm', 'ccorr_norm', 'mse_norm'):
                 x.append(cv2.matchTemplate(second_image.astype('float32'), first_image.astype('float32'), cv2_methods[method])[0][0])
-            # print x
-            # raw_input()
         time_taken.append(time.time() - tic)
         # print x
 
@@ -204,20 +294,15 @@ def compute_heartbeat_length(dwt_array, method='ccoeff_norm', comparison_plot=Tr
 
         f, Pxx = signal.welch(x, im_fps, nperseg=nperseg)
 
-        # print f
         t = im_fps / f
-        if comparison_plot:
-            plt.figure(211)
-            plt.plot(x)
-            print t[np.argmax(Pxx) - 10: np.argmax(Pxx) + 10]
-            comparison_plot = False
+        # if comparison_plot:
+        #     plt.figure(211)
+        #     plt.plot(x)
+        #     print t[np.argmax(Pxx) - 10: np.argmax(Pxx) + 10]
+        #     comparison_plot = False
         # raw_input()
         Pxx[np.where(t > 400)] = 0
         hb_array.append(t[np.argmax(Pxx)])
-        plt.figure(212)
-        cl = next(color)
-        plt.plot(t, Pxx, c=cl)
-        # plt.hold(True)
 
     cm_hb = stats.mode(hb_array)
     print 'Common heartbeat period-', cm_hb[0]
@@ -225,6 +310,7 @@ def compute_heartbeat_length(dwt_array, method='ccoeff_norm', comparison_plot=Tr
     plt.show()
     print hb_array
     print 'average time taken - ', sum(time_taken) / len(time_taken)
+
     return cm_hb[0]
 
 
@@ -258,15 +344,7 @@ def compute_canonical_heartbeat(dwt_array, mean_hb_period, sad_matrix_pkl_name='
 
         pickle_object(sad_matrix, sad_matrix_pkl_name)
 
-    # print sad_matrix.shape
-    # print np.max(sad_matrix)
-    # print np.mean(sad_matrix)
-    # print np.median(sad_matrix)
-    # plt.imshow(sad_matrix, cmap='hot')
-    # plt.colorbar()
-    # plt.show()
-    # raw_input()
-
+    # TODO: Check other values of threshold
     threshold = 0.5 * np.max(sad_matrix)
     start_frame = 0
     num_contiguous_frames = setting['ZookZikPeriod'] - (setting['ignore_startzook'] + setting['ignore_endzook'])
@@ -323,6 +401,90 @@ def compute_canonical_heartbeat(dwt_array, mean_hb_period, sad_matrix_pkl_name='
     return np.argmax(mean2std_clustered_match)
 
 
+# TODO: replace with class
+PhaseStamp = collections.namedtuple('PhaseStamp', ['phase', 'matchval'])
+
+
+def phase_stamp_images(dwt_array, canonical_hb_dwt):
+    phase_stamps = []
+
+    for frame in range(dwt_array.shape[2]):
+        curr_frame = dwt_array[:, :, frame]
+
+        sad_array = np.zeros(canonical_hb_dwt.shape[2])
+
+        for phase in range(canonical_hb_dwt.shape[2]):
+            canon_frame = canonical_hb_dwt[:, :, phase]
+            sad_array[phase] = np.sum(np.abs(curr_frame - canon_frame))
+
+        best_phase = np.argmax(sad_array)
+        phase_stamps.append(PhaseStamp(phase=best_phase, matchval=sad_array[best_phase]))
+
+    return phase_stamps
+
+
+def compile_phase_z_matrix(framelist, z_stamps, phase_stamps, hb_length):
+    phase_z_matrix = np.empty((hb_length, len(framelist)), dtype=np.object)
+
+    for i in range(hb_length):
+        for j in range(len(framelist)):
+            phase_z_matrix[i, j] = list()
+
+    for index, frame in enumerate(framelist):
+        phase_z_matrix[phase_stamps[index].phase, z_stamps[index]].append((frame, phase_stamps[index].matchval))
+
+
+def phase_stamping_step():
+    frame_list = unpickle_object('processed_frame_list')
+    z_stamps = unpickle_object('z_stamp_opt')
+
+    moving_dwt_array = compute_dwt_matrix(
+        img_path=setting['cropped_bf_images'],
+        frame_indices=frame_list,
+        write_to=setting['bf_images_dwt'],
+        pkl_file_name='moving_dwt_array'
+    )
+
+    canon_frame_count = setting['canon_frac'] / 100.0 * len(frame_list)
+    canon_dwt_array = upsample_dwt_array(
+        moving_dwt_array[:, :, canon_frame_count]
+    )[:, :, 2:-2]
+
+    # TODO: Z stamp and crop stationary images, not use whole
+    stat_dwt_array = compute_dwt_matrix(
+        img_path=setting['bf_images'],  # Assuming stationary images are taken in the same imaging session as moving images
+        # img_path=setting['stat_images_cropped'],
+        frame_indices=range(
+            setting['stat_index_start_at'],
+            setting['stat_index_start_at'] + setting['stat_frame_count']
+        ),
+        write_to=setting['stat_images_dwt_upsampled'],
+        pkl_file_name='stat_dwt_array.pkl'
+    )[:, :, 2:-2]
+
+    canon_hb_length = compute_heartbeat_length(
+        stat_dwt_array,
+        comparison_plot=True,
+        nperseg=50000
+    )
+
+    canon_hb_start = compute_canonical_heartbeat(
+        canon_dwt_array,
+        np.round(canon_hb_length).astype('int')
+    )
+
+    canonical_frame_list = frame_list[canon_hb_start: canon_hb_start + canon_hb_length]
+
+    # TODO: Write canonical frames to disk
+
+    phi_stamps = phase_stamp_images(
+        moving_dwt_array,
+        moving_dwt_array[canon_hb_start: canon_hb_start + canon_hb_length]
+    )
+
+    compile_phase_z_matrix(frame_list, z_stamps, phi_stamps, canon_hb_length)
+
+
 if __name__ == '__main__':
     import pickle
     from maps.helpers.logging_config import logger_config
@@ -343,7 +505,7 @@ if __name__ == '__main__':
     setting['image_prefix'] = 'FRAMEX'
     setting['bf_period_path'] = 'D:\\Scripts\\MaPS\\Data sets\\Phase_cropped_old\\'
     setting['bf_period_dwt_path'] = 'D:\\Scripts\\MaPS\\Data sets\\Upsampled_BF_DWT'
-    setting['data_dump'] = 'D:\\Scripts\\MaPS\\Data sets\\Raw data\\'
+    setting['workspace'] = 'D:\\Scripts\\MaPS\\Data sets\\Raw data\\'
     setting['resampling_factor'] = 5
     setting['slide_limit'] = 5
     # setting['ZookZikPeriod'] = 728
@@ -351,13 +513,13 @@ if __name__ == '__main__':
     setting['num_digits'] = 5
     setting['first_minima'] = 0
 
-    with open(os.path.join(setting['data_dump'], 'processed_frame_list.pkl')) as pkfp:
+    with open(os.path.join(setting['workspace'], 'processed_frame_list.pkl')) as pkfp:
         frames = pickle.load(pkfp)
 
     COMPUTE_DWT = True
 
     if COMPUTE_DWT:
-        d = compute_dwt_matrix(setting['bf_period_path'], frames[:500],
+        d = compute_dwt_matrix(setting['bf_period_path'], frames[:2000],
                                #    write_to=setting['bf_period_dwt_path'],
                                upsample=True)
     else:
