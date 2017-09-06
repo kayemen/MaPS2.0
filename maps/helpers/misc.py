@@ -1,4 +1,4 @@
-from maps.settings import setting
+from maps.settings import setting, make_or_clear_directory
 
 import os
 import shutil
@@ -7,7 +7,8 @@ import csv
 import pickle
 import logging
 import uuid
-
+import threading
+import matplotlib.pyplot as plt
 logger = logging.getLogger('maps.helper.misc')
 
 
@@ -32,8 +33,15 @@ def unpickle_object(file_name, dumptype='pkl'):
     data = None
 
     if dumptype == 'pkl':
-        with open(final_path, 'rb') as pkfp:
+        with open(final_path, 'r') as pkfp:
             data = pickle.load(pkfp)
+
+    elif dumptype == 'csv':
+        data = []
+        with open(final_path, 'rb') as csv_file:
+            reader = csv.reader(csv_file)
+            for row in reader:
+                data.append(row)
 
     return data
 
@@ -65,7 +73,7 @@ def pickle_object(data, file_name, dumptype='pkl'):
         wb.save(final_path)
 
     elif dumptype == 'pkl':
-        with open(final_path, 'wb') as pkl_file:
+        with open(final_path, 'w') as pkl_file:
             pickle.dump(data, pkl_file)
 
     elif dumptype == 'csv':
@@ -75,6 +83,63 @@ def pickle_object(data, file_name, dumptype='pkl'):
 
     print 'Data saved to %s' % final_path
 
+
+MAX_THREAD_COUNT = 20
+
+threadLimiter = threading.BoundedSemaphore(MAX_THREAD_COUNT)
+
+
+def write_error_plot(fig, file_name):
+    error_data_dir = os.path.join(setting['workspace'], 'error_data')
+    make_or_clear_directory(error_data_dir, clear=False)
+    fig.savefig(os.path.join(error_data_dir, file_name))
+
+
+class LimitedThread(threading.Thread):
+    current_threads = []
+    current_thread_count = 0
+
+    def run(self):
+        threadLimiter.acquire()
+        try:
+            super(LimitedThread, self).run()
+        finally:
+            threadLimiter.release()
+
+
+def zook_approval_function(zooks, z_stamps=None):
+    print 'Process bad zooks:'
+    bz = zooks.get_bad_zooks()
+    print '%d bad zooks found.\n%d zooks have bad zstage.\n%d zooks have bad convexity in correlation.\n%d zooks have bad shift' % (len(bz), len(filter(lambda x: x.is_bad_zstage, bz)), len(filter(lambda x: x.is_bad_convexity, bz)), len(filter(lambda x: x.is_bad_shift, bz)))
+
+    print 'Press "s" to skip all remaining checks and drop all. Press "p" to approve all remaining bad zooks'
+
+    choice = ''
+    for zook in bz:
+        err_msg = ''
+        err_msg += '|Bad zstage' if zook.is_bad_zstage else ''
+        err_msg += '|Bad convexity' if zook.is_bad_convexity else ''
+        err_msg += '|Bad correlation shift' if zook.is_bad_shift else ''
+        err_msg += '|Unknown error' if zook.generic_error else ''
+        print 'Zook#%d%s' % (zook.id, err_msg)
+        if choice != 'p':
+            if z_stamps is not None:
+                choice = raw_input(
+                    'Do you want to review frame plot?[y/n]').lower()
+                if choice == 'y':
+                    # Plot frame
+                    pass
+            choice = raw_input('Drop zook? [y/n/s/p]').lower()
+            if choice == 'n':
+                zook.override = True
+            if choice == 's':
+                break
+            if choice == 'p':
+                zook.override = True
+        else:
+            zook.override = True
+    print 'Final stats'
+    print '%d zooks dropped. %d zooks usable' % (len(zooks.get_bad_zooks()), len(zooks))
 
 if __name__ == '__main__':
     pass

@@ -4,9 +4,9 @@ from maps.helpers.tiffseriesimport import importtiff, writetiff
 from scipy import signal
 from pywt import dwt2
 
-from maps.settings import setting, reload_current_settings
+from maps.settings import setting, read_setting_from_json
 
-reload_current_settings()
+read_setting_from_json()
 
 
 def chunked_dwt_resize(dwt_array, resize_factor, chunk_size=100):

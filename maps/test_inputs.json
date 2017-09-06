@@ -1,5 +1,13 @@
 [
   {
+    "description": "Job name",
+    "varname": "job_name",
+    "value": "job1",
+    "helptext": "",
+    "hidden": false,
+    "type": "path"
+  },
+  {
     "description": "Kymograph folder name",
     "varname": "km_path",
     "value": "Kymographs",
@@ -10,7 +18,7 @@
   {
     "description": "Brightfield Images",
     "varname": "bf_images",
-    "value": "Phase_Bidi",
+    "value": "Phase_images",
     "helptext": "",
     "hidden": false,
     "type": "path"
@@ -19,14 +27,6 @@
     "description": "Cropped Brightfield Images",
     "varname": "cropped_bf_images",
     "value": "Phase_images_cropped",
-    "helptext": "",
-    "hidden": false,
-    "type": "path"
-  },
-  {
-    "description": "Reference windows",
-    "varname": "cropped_ref_windows",
-    "value": "Ref_windows_cropped",
     "helptext": "",
     "hidden": false,
     "type": "path"
@@ -48,25 +48,9 @@
     "type": "path"
   },
   {
-    "description": "Stationary Images cropped",
-    "varname": "stat_images_cropped",
-    "value": "Stationary_images_cropped",
-    "helptext": "",
-    "hidden": false,
-    "type": "path"
-  },
-  {
     "description": "Stationary Images interpolated DWT",
     "varname": "stat_images_dwt_upsampled",
-    "value": "Stationary_images_DWT_upsampled",
-    "helptext": "",
-    "hidden": false,
-    "type": "path"
-  },
-  {
-    "description": "Canonical heartbeat frames",
-    "varname": "canon_frames",
-    "value": "Canonical_heartbeat_frames",
+    "value": "Phase_images_DWT_upsampled",
     "helptext": "",
     "hidden": false,
     "type": "path"
@@ -74,7 +58,7 @@
   {
     "description": "Fluorescent images",
     "varname": "fm_images",
-    "value": "Fluorescence_Bidi_1",
+    "value": "Fluorescent_images",
     "helptext": "",
     "hidden": false,
     "type": "str"
@@ -85,7 +69,7 @@
     "value": "Final_imageset",
     "helptext": "",
     "hidden": false,
-    "type": "path"
+    "type": "str"
   },
   {
     "description": "Workspace folder name",
@@ -93,7 +77,7 @@
     "value": "Workspace",
     "helptext": "",
     "hidden": false,
-    "type": "path"
+    "type": "str"
   },
   {
     "description": "Brightfield image prefix",
@@ -160,14 +144,6 @@
     "type": "int"
   },
   {
-    "description": "First minima",
-    "varname": "first_minima",
-    "value": "0",
-    "helptext": "",
-    "hidden": false,
-    "type": "int"
-  },
-  {
     "description": "Spatial remapling factor",
     "varname": "resampling_factor",
     "value": "5",
@@ -185,7 +161,7 @@
   },
   {
     "description": "Z shift limit",
-    "varname": "slide_limit",
+    "varname": "shift_limit",
     "value": "5",
     "helptext": "",
     "hidden": false,
@@ -193,7 +169,7 @@
   },
   {
     "description": "Y shift limit",
-    "varname": "y_slide_limit",
+    "varname": "y_shift_limit",
     "value": "10",
     "helptext": "",
     "hidden": false,
@@ -224,14 +200,6 @@
     "type": "int"
   },
   {
-    "description": "Threshold while detecting zook from kymograph",
-    "varname": "kymo_zook_threshold",
-    "value": "60",
-    "helptext": "",
-    "hidden": false,
-    "type": "int"
-  },
-  {
     "description": "Approximate frames/heartbeat",
     "varname": "approx_fphb",
     "value": "1",
@@ -248,17 +216,9 @@
     "type": "bool"
   },
   {
-    "description": "Save valid TIFF of reference window",
-    "varname": "write_ref_window",
-    "value": "True",
-    "helptext": "",
-    "hidden": true,
-    "type": "bool"
-  },
-  {
     "description": "Use pickled workspace",
     "varname": "usePickled",
-    "value": "False",
+    "value": "True",
     "helptext": "",
     "hidden": true,
     "type": "bool"

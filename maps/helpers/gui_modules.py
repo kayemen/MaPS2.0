@@ -7,6 +7,30 @@ import cv2
 import numpy as np
 import glob
 import time
+from matplotlib import pyplot as plt
+
+# Custom heatmap
+cdict = {
+    'red': [
+        (0.0, 0.0, 0.0),
+        (0.001, 0.0, 0.01),
+        (1.0, 1.0, 1.0)
+    ],
+    'green': [
+        (0.0, 0.0, 0.0),
+        (0.001, 0.0, 0.0),
+        (0.5, 1.0, 1.0),
+        (0.999, 0.0, 0.0),
+        (1.0, 0.0, 0.0)
+    ],
+    'blue': [
+        (0.0, 0.0, 0.0),
+        (0.001, 0.0, 1.0),
+        (1.0, 0.0, 0.0)
+    ]
+}
+plt.register_cmap(name='custom_heatmap', data=cdict)
+
 
 cv2_methods = {
     'ccorr_norm': cv2.TM_CCORR_NORMED,
@@ -108,7 +132,8 @@ def create_image_overlay(img, overlay_type=None, overlay_data=None, normalize=Tr
         if overlay_data is None:
             raise GUIException('Rectangle parameters not passed')
         if set(['pt1', 'pt2', 'color']) > set(overlay_data.keys()):
-            raise GUIException('Required rectangle parameters not passed - %s' % (set(overlay_data.keys()) - set(['pt1', 'pt2', 'color'])))
+            raise GUIException('Required rectangle parameters not passed - %s' %
+                               (set(overlay_data.keys()) - set(['pt1', 'pt2', 'color'])))
         # Draw rectangle on frame
         cv2.rectangle(frame, **overlay_data)
 
@@ -116,10 +141,12 @@ def create_image_overlay(img, overlay_type=None, overlay_data=None, normalize=Tr
         if overlay_data is None:
             raise GUIException('Polygon data not provided')
         if set(['ptarray', 'color', 'lineType']) > set(overlay_data.keys()):
-            raise GUIException('Required polygon parameters not passed - %s' % (set(overlay_data.keys()) - set()))
+            raise GUIException(
+                'Required polygon parameters not passed - %s' % (set(overlay_data.keys()) - set()))
         # Draw polygon on image_texture
         for ptindex in range(len(overlay_data['ptarray'])):
-            cv2.line(frame, overlay_data['ptarray'][ptindex], overlay_data['ptarray'][(ptindex + 1) % len(overlay_data['ptarray'])], overlay_data['color'], overlay_data['thickness'])
+            cv2.line(frame, overlay_data['ptarray'][ptindex], overlay_data['ptarray'][
+                     (ptindex + 1) % len(overlay_data['ptarray'])], overlay_data['color'], overlay_data['thickness'])
 
     else:
         raise GUIException('Unknown overlay type - %s' % overlay_type)
@@ -231,11 +258,12 @@ def extract_window(frame, x_start, x_end, y_start, y_end):
     '''
     Return the ROI from a frame within the bounding box specified by x_start, x_end, y_start, y_end
     '''
-    frame_win = frame[int(x_start): int(x_end) + 1, int(y_start): int(y_end) + 1]
+    frame_win = frame[int(x_start): int(x_end) + 1,
+                      int(y_start): int(y_end) + 1]
     return frame_win
 
 
-def load_frame(img_path, frame_no, upsample=True, crop=False, cropParams=(), index_start_number=None, prefix=None):
+def load_frame(img_path, frame_no, upsample=True, crop=False, cropParams=(), index_start_number=None, prefix=None, num_digits=None):
     '''
     Load the tiff file of the frame, resize (upsample by resampling factor if needed), crop using cropParams if needed and return image array.
     '''
@@ -243,7 +271,10 @@ def load_frame(img_path, frame_no, upsample=True, crop=False, cropParams=(), ind
         index_start_number = setting['index_start_at']
     if prefix is None:
         prefix = setting['image_prefix']
-    img = importtiff(img_path, frame_no, prefix=prefix, index_start_number=index_start_number, num_digits=setting['num_digits'])
+    if num_digits is None:
+        num_digits = setting['num_digits']
+    img = importtiff(img_path, frame_no, prefix=prefix,
+                     index_start_number=index_start_number, num_digits=num_digits)
     if upsample:
         img = resize(
             img,

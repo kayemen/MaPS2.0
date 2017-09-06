@@ -2,15 +2,23 @@
 import os
 import json
 import csv
+import time
 # import get_inputs
 
 BASE_DIR = os.path.dirname(__file__)
 JOBS_DIR = os.path.join(os.path.dirname(BASE_DIR), 'jobs')
+THREADED = False
+MULTIPROCESSING = True
+NUM_PROCESSES = None
+NUM_CHUNKS = 5
+TIMEOUT = 20
 
 setting = {}
 descriptions = {}
 helptexts = {}
 hidden_settings = {}
+
+step_count = 0
 
 
 def make_or_clear_directory(path, clear=False):
@@ -42,7 +50,8 @@ def read_setting_from_json(job_name, setting_json_path=os.path.join(BASE_DIR, 'c
                 setting[varobj] = (setting_obj['value'].lower() == 'true')
             # TODO: Make path relative
             elif setting_obj['type'] == 'path':
-                setting[varobj] = os.path.join(JOBS_DIR, job_name, setting_obj['value'])
+                setting[varobj] = os.path.join(
+                    JOBS_DIR, job_name, setting_obj['value'])
             else:
                 setting[varobj] = setting_obj['value']
         else:
@@ -52,7 +61,8 @@ def read_setting_from_json(job_name, setting_json_path=os.path.join(BASE_DIR, 'c
         helptexts[varobj] = setting_obj['helptext']
         hidden_settings[varobj] = setting_obj['hidden']
 
-    local_setting_path = os.path.join(JOBS_DIR, job_name, 'local_settings.json')
+    local_setting_path = os.path.join(
+        JOBS_DIR, job_name, 'local_settings.json')
     if os.path.exists(local_setting_path):
         local_setting_json = json.load(open(local_setting_path))
     else:
@@ -72,7 +82,8 @@ def read_setting_from_json(job_name, setting_json_path=os.path.join(BASE_DIR, 'c
             elif setting_obj['type'] == 'bool':
                 setting[varobj] = (setting_obj['value'].lower() == 'true')
             elif setting_obj['type'] == 'path':
-                setting[varobj] = os.path.join(JOBS_DIR, job_name, setting_obj['value'])
+                setting[varobj] = os.path.join(
+                    JOBS_DIR, job_name, setting_obj['value'])
                 make_or_clear_directory(setting[varobj])
             else:
                 setting[varobj] = setting_obj['value']
@@ -139,4 +150,28 @@ def write_setting_to_csv(setting_obj, csv_file_name=os.path.join(BASE_DIR, 'curr
 
 
 def display_current_settings():
-    print 'Frame count:', setting['frame_count']
+    print ' - *' * 19, '-'
+    print 'Running job with following settings at ', time.asctime()
+    print 'Multiprocessing:', MULTIPROCESSING
+    print 'Moving Frame count:', setting['frame_count']
+    print 'Moving Frame start index:', setting['index_start_at']
+    print 'Stationary Frame count:', setting['stat_frame_count']
+    print 'Stationary Frame start index:', setting['stat_index_start_at']
+    print 'Z wiggle size:', setting['slide_limit']
+    print 'Z wiggle size resized:', setting['slide_limit'] * setting['resampling_factor']
+    print 'Y wiggle size:', setting['y_slide_limit']
+    print 'Y wiggle size resized:', setting['y_slide_limit'] * setting['resampling_factor']
+
+
+def display_step(step_name, additional_info=None):
+    global step_count
+
+    step_count += 1
+    print ' - *' * 19, '-'
+    print 'Step %d: %s\n%s\n%s' % (
+        step_count,
+        step_name,
+        time.asctime(),
+        additional_info if additional_info is not None else ''
+    )
+    '- * ' * 19, '-'

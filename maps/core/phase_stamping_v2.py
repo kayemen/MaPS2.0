@@ -17,6 +17,7 @@ from maps.settings import setting, read_setting_from_json, THREADED
 from maps.helpers.gui_modules import cv2_methods, load_frame, extract_window
 from maps.helpers.logging_config import logger_config
 from maps.helpers.misc import LimitedThread
+from maps import settings
 
 import os
 import logging
@@ -27,6 +28,8 @@ import platform
 import collections
 import threading
 import shutil
+from multiprocessing.pool import ThreadPool
+from multiprocessing import TimeoutError
 
 logger = logging.getLogger(__name__)
 
@@ -156,7 +159,7 @@ def upsample_dwt_array(dwt_array):
             resize_factor=setting['time_resampling_factor'],
             chunk_size=100
         )
-    return dwt_array
+    return dwt_array[:, :, setting['time_resampling_factor'] - 1: -setting['time_resampling_factor'] + 1]
 
 
 def write_dwt_matrix(dwt_matrix, write_to, frame_indices, validTiff=False):
@@ -172,24 +175,52 @@ def write_dwt_matrix(dwt_matrix, write_to, frame_indices, validTiff=False):
 
     dwt_threads = []
 
-    for index, frame_id in enumerate(frame_indices):
-        # print('Writing DWT frame #%d' % frame_id)
-        if THREADED:
-            dwt_threads.append(
-                LimitedThread(
-                    target=writetiff,
-                    args=(dwt_matrix[:, :, index], write_to, index)
-                )
-            )
-            dwt_threads[-1].start()
-        else:
-            writetiff(dwt_matrix[:, :, index], write_to, index)
+    if not settings.MULTIPROCESSING:
+        map(
+            lambda x: writetiff(
+                dwt_matrix[:, :, x[1]],
+                write_to,
+                x[0]
+            ),
+            enumerate(frame_indices)
+        )
+    else:
+        proc_pool = ThreadPool(processes=settings.NUM_PROCESSES)
+        temp_var = proc_pool.map_async(
+            lambda x: writetiff(
+                dwt_matrix[:, :, x[1]],
+                write_to,
+                x[0]
+            ),
+            enumerate(frame_indices),
+            settings.NUM_CHUNKS
+        )
 
-    for th in dwt_threads:
-        th.join()
+        try:
+            temp_var.get(timeout=100)
+        except TimeoutError:
+            logging.info('Frame timed out in %d seconds' %
+                         (settings.TIMEOUT))
+
+    # for index, frame_id in enumerate(frame_indices):
+    #     # print('Writing DWT frame #%d' % frame_id)
+    #     if THREADED:
+    #         dwt_threads.append(
+    #             LimitedThread(
+    #                 target=writetiff,
+    #                 args=(dwt_matrix[:, :, index], write_to, index)
+    #             )
+    #         )
+    #         dwt_threads[-1].start()
+    #     else:
+    #         writetiff(dwt_matrix[:, :, index], write_to, index)
+
+    # for th in dwt_threads:
+    #     th.join()
 
 
 def load_dwt_frame(dwt_path, dwt_array, frame_index):
+    # print frame_index
     dwt_frame = importtiff(dwt_path, frame_index, index_start_number=0)
     dwt_array[:, :, frame_index] = dwt_frame
 
@@ -203,24 +234,51 @@ def load_dwt_matrix(load_from, num_frames=None):
 
     dwt_load_threads = []
 
-    for index in xrange(num_frames):
-        if THREADED:
-            dwt_load_threads.append(
-                LimitedThread(
-                    target=load_dwt_frame,
-                    args=(
-                        load_from,
-                        dwt_array,
-                        index
-                    )
-                )
-            )
-            dwt_load_threads[-1].start()
-        else:
-            load_dwt_frame(load_from, dwt_array, index)
+    if not settings.MULTIPROCESSING:
+        map(
+            lambda x: load_dwt_frame(
+                load_from,
+                dwt_array,
+                x
+            ),
+            range(num_frames)
+        )
+    else:
+        proc_pool = ThreadPool(processes=settings.NUM_PROCESSES)
+        temp_var = proc_pool.map_async(
+            lambda x: load_dwt_frame(
+                load_from,
+                dwt_array,
+                x
+            ),
+            range(num_frames),
+            settings.NUM_CHUNKS
+        )
 
-    for th in dwt_load_threads:
-        th.join()
+        try:
+            temp_var.get(timeout=100)
+        except TimeoutError:
+            logging.info('Frame timed out in %d seconds' %
+                         (settings.TIMEOUT))
+
+    # for index in xrange(num_frames):
+    #     if THREADED:
+    #         dwt_load_threads.append(
+    #             LimitedThread(
+    #                 target=load_dwt_frame,
+    #                 args=(
+    #                     load_from,
+    #                     dwt_array,
+    #                     index
+    #                 )
+    #             )
+    #         )
+    #         dwt_load_threads[-1].start()
+    #     else:
+    #         load_dwt_frame(load_from, dwt_array, index)
+
+    # for th in dwt_load_threads:
+    #     th.join()
 
     return dwt_array
 
@@ -236,6 +294,7 @@ def compute_dwt_matrix(img_path, frame_indices, crop=False, write_to=None, pkl_f
     '''
     Compute the DWT matrix for a sequence of images. Optionally writes the DWT array as images to disk. Also writes as pkl file
     '''
+    # TODO: Change frame indices to zook objects
     first_image = load_frame(img_path, frame_indices[
                              0], prefix='FRAMEX', index_start_number=0, upsample=False, num_digits=5)
     (cA, _) = pywt.dwt2(first_image, 'db1', mode='sym')
@@ -390,10 +449,46 @@ def crop_and_compute_dwt_matrix(img_path, z_stamps, y_stamps, discarded_zooks_li
     return dwt_array
 
 
-def interchelate_dwt_array(dwt_array, write_to=None, pkl_file_name=None, validTiff=False):
+def upsample_dwt_array(dwt_array):
+    '''
+    Upsampling the dwt array if required. Depending on the architecture of system, will compute resize in single call to `resize` if 64-bit system or will use chunked calls if 32-bit
+    '''
+    if platform.architecture()[0] == '64bit':
+        dwt_array = resize(
+            dwt_array,
+            (
+                dwt_array.shape[0],
+                dwt_array.shape[1],
+                dwt_array.shape[2] * setting['time_resampling_factor']
+            ),
+            preserve_range=True,
+            order=5,
+            clip=False
+        )
+    else:
+        dwt_array = chunked_dwt_resize(
+            dwt_array,
+            resize_factor=setting['time_resampling_factor'],
+            chunk_size=100
+        )
+    return dwt_array[:, :, setting['time_resampling_factor'] - 1: -setting['time_resampling_factor'] + 1]
+
+
+def interchelate_dwt_array(dwt_array, zooks=None, write_to=None, pkl_file_name=None, validTiff=False):
     # TODO: Perform upsampling zook by zook
-    print dwt_array.shape
-    us_dwt_array = upsample_dwt_array(dwt_array)
+    # print dwt_array.shape
+    if zooks is not None:
+        zook_gen = zooks.get_dwt_framelist(upsample=True)
+        us_dwt_array = upsample_dwt_array(dwt_array[:, :, zook_gen.next()])
+        for zook_lim in zook_gen:
+            print zook_lim
+            us_dwt_array = np.dstack(
+                (us_dwt_array,
+                 upsample_dwt_array(dwt_array[:, :, zook_lim]))
+            )
+            print us_dwt_array.shape
+    else:
+        us_dwt_array = upsample_dwt_array(dwt_array)
 
     writing_threads = []
 
@@ -429,6 +524,25 @@ def interchelate_dwt_array(dwt_array, write_to=None, pkl_file_name=None, validTi
     return us_dwt_array
 
 
+def compute_peak_harmonic(first_image, second_image, method, corr_array):
+    # Corr2 method
+    if method == 'corr':
+        corr_array.append(corr2(first_image, second_image))
+    # SSIM
+    elif method == 'ssim':
+        corr_array.append(ssim2(first_image, second_image))
+    # Abs Diff
+    # TODO: Will require filtering
+    elif method == 'sad':
+        corr_array.append(np.sum(np.absolute(first_image - second_image)))
+    # OpenCV methods ccorr, ccoeff
+    elif method in ('ccoeff_norm', 'ccorr_norm', 'mse_norm'):
+        corr_array.append(cv2.matchTemplate(
+            second_image.astype('float32'),
+            first_image.astype('float32'), cv2_methods[method])[0][0]
+        )
+
+
 def compute_heartbeat_length(dwt_array, method='ccoeff_norm', comparison_plot=True, im_fps=480, nperseg=3000):
     '''
     Compute the length of the heartbeat. Uses the DWT of the
@@ -443,22 +557,39 @@ def compute_heartbeat_length(dwt_array, method='ccoeff_norm', comparison_plot=Tr
         first_image = dwt_array[:, :, ref_frame]
         tic = time.time()
         x = []
-        for i in range(dwt_array.shape[2]):
-            second_image = dwt_array[:, :, i]
-            # Corr2 method
-            if method == 'corr':
-                x.append(corr2(first_image, second_image))
-            # SSIM
-            elif method == 'ssim':
-                x.append(ssim2(first_image, second_image))
-            # Abs Diff
-            # TODO: Will require filtering
-            elif method == 'sad':
-                x.append(np.sum(np.absolute(first_image - second_image)))
-            # OpenCV methods ccorr, ccoeff
-            elif method in ('ccoeff_norm', 'ccorr_norm', 'mse_norm'):
-                x.append(cv2.matchTemplate(second_image.astype('float32'),
-                                           first_image.astype('float32'), cv2_methods[method])[0][0])
+        # for i in range(dwt_array.shape[2]):
+        #     second_image = dwt_array[:, :, i]
+        if not settings.MULTIPROCESSING:
+            map(
+                lambda frame: compute_peak_harmonic(
+                    first_image,
+                    dwt_array[:, :, frame],
+                    method,
+                    x
+                ),
+                range(dwt_array.shape[2])
+            )
+        else:
+            proc_pool = ThreadPool(processes=settings.NUM_PROCESSES)
+            temp_var = proc_pool.map_async(
+                lambda frame: compute_peak_harmonic(
+                    first_image,
+                    dwt_array[:, :, frame],
+                    method,
+                    x
+                ),
+                range(dwt_array.shape[2]),
+                settings.NUM_CHUNKS
+            )
+
+            try:
+                temp_var.get(timeout=settings.TIMEOUT)
+            except TimeoutError:
+                logging.info('Zook %d timed out in %d seconds' %
+                             (zook.id, settings.TIMEOUT))
+
+            del proc_pool
+
         time_taken.append(time.time() - tic)
         # print x
 
@@ -488,16 +619,16 @@ def compute_heartbeat_length(dwt_array, method='ccoeff_norm', comparison_plot=Tr
 
 
 def compute_sad(dwt_array, ref_dwt, i, sad_matrix):
-
     for j in range(i, dwt_array.shape[2]):
         curr_dwt = dwt_array[:, :, j]
 
         sad_matrix[i, j] = sad_matrix[j, i] = np.sum(
             np.absolute(ref_dwt - curr_dwt)
         )
+    # print 'row %d done' % i
 
 
-def compute_canonical_heartbeat(dwt_array, mean_hb_period, sad_matrix_pkl_name=None, write_to=None, use_pickled_sad=False):
+def compute_canonical_heartbeat(dwt_array, zooks, mean_hb_period, sad_matrix_pkl_name=None, write_to=None, use_pickled_sad=False):
     '''
     Processes interpolated frame wavelets. find the best continuous sequence of heartbeats
     '''
@@ -511,49 +642,52 @@ def compute_canonical_heartbeat(dwt_array, mean_hb_period, sad_matrix_pkl_name=N
         # time_taken = []
         tic = time.time()
         sad_threads = []
-        for i in range(dwt_array.shape[2]):
-            # TODO: Threads
-            ref_dwt = dwt_array[:, :, i]
-            if i % 100 == 0:
-                print 'Processing frame %d' % i
-            # tic = time.time()
 
-            if True:
-                sad_threads.append(
-                    LimitedThread(
-                        target=compute_sad,
-                        args=(
-                            dwt_array,
-                            ref_dwt,
-                            i,
-                            sad_matrix
-                        )
-                    )
-                )
+        if not settings.MULTIPROCESSING:
+            map(
+                lambda frame_no: compute_sad(
+                    dwt_array,
+                    dwt_array[:, :, frame_no],
+                    frame_no,
+                    sad_matrix
+                ),
+                range(dwt_array.shape[2])
+            )
+        else:
+            proc_pool = ThreadPool(processes=settings.NUM_PROCESSES)
+            temp_var = proc_pool.map_async(
+                lambda frame_no: compute_sad(
+                    dwt_array,
+                    dwt_array[:, :, frame_no],
+                    frame_no,
+                    sad_matrix
+                ),
+                range(dwt_array.shape[2]),
+                settings.NUM_CHUNKS
+            )
 
-                sad_threads[-1].start()
-            else:
-                for j in range(i, dwt_array.shape[2]):
-                    curr_dwt = dwt_array[:, :, j]
+            timeout_sad = settings.TIMEOUT * 150
+            try:
+                temp_var.get(timeout=timeout_sad)
+            except TimeoutError:
+                print temp_var._number_left, 'frames left'
+                logging.info('SAD generation timed out in %d seconds' %
+                             (timeout_sad))
+                logging.info('%d frames did not get processed' %
+                             (temp_var._number_left))
 
-                    sad_matrix[i, j] = sad_matrix[j, i] = np.sum(
-                        np.absolute(ref_dwt - curr_dwt)
-                    )
-
-        print 'Waiting for SAD threads to finish'
-        for th in [x for x in sad_threads if x.isAlive()]:
-            th.join()
-            print len([1 for th in sad_threads if th.isAlive()]), ' threads still processing'
+            del proc_pool
 
         print 'Time taken for SAD matrix generation:', time.time() - tic
         if sad_matrix_pkl_name:
             pickle_object(sad_matrix, sad_matrix_pkl_name)
+            print 'sad_matrix pickled'
 
     # TODO: Check other values of threshold
     threshold = 0.5 * np.max(sad_matrix)
     start_frame = 0
-    num_contiguous_frames = setting[
-        'ZookZikPeriod'] - (setting['ignore_startzook'] + setting['ignore_endzook'])
+    num_contiguous_frames = (setting[
+        'ZookZikPeriod'] - (setting['ignore_startzook'] + setting['ignore_endzook'])) * setting['time_resampling_factor']
 
     # print num_contiguous_frames * setting['canonical_zook_count']
     # raw_input()
@@ -568,8 +702,13 @@ def compute_canonical_heartbeat(dwt_array, mean_hb_period, sad_matrix_pkl_name=N
     clustered_match_array = []
     match_mat_array = []
 
+    # print mean_hb_period
     for zook in range(setting['canonical_zook_count'] - 2):
-        for frame in range(start_frame, start_frame + num_contiguous_frames - mean_hb_period):
+        print range(int(start_frame) + (num_contiguous_frames // 4), int(start_frame + num_contiguous_frames - mean_hb_period) - (num_contiguous_frames // 4))
+        for frame in range(int(start_frame), int(start_frame + num_contiguous_frames - mean_hb_period)):
+            # for frame in range(int(start_frame) + (num_contiguous_frames //
+            # 4), int(start_frame + num_contiguous_frames - mean_hb_period) -
+            # (num_contiguous_frames // 4)):
             matching_frames = sad_matrix[frame: frame + mean_hb_period, :]
 
             try:
@@ -651,32 +790,78 @@ PhaseStamp = collections.namedtuple(
     'PhaseStamp', ['phase', 'matchval', 'neighbourMatchVals'])
 
 
-def phase_stamp_images(dwt_array, canonical_hb_dwt):
-    phase_stamps = []
+def phase_stamp_image(curr_frame, canonical_hb_dwt):
+    sad_array = np.zeros(canonical_hb_dwt.shape[2])
 
-    for frame in range(dwt_array.shape[2]):
-        curr_frame = dwt_array[:, :, frame]
+    for phase in range(canonical_hb_dwt.shape[2]):
+        canon_frame = canonical_hb_dwt[:, :, phase]
+        sad_array[phase] = np.sum(np.abs(curr_frame - canon_frame))
 
-        sad_array = np.zeros(canonical_hb_dwt.shape[2])
-
-        for phase in range(canonical_hb_dwt.shape[2]):
-            canon_frame = canonical_hb_dwt[:, :, phase]
-            sad_array[phase] = np.sum(np.abs(curr_frame - canon_frame))
-
-        # plt.plot(sad_array)
-        # plt.show()
-
-        best_phase = np.argmin(sad_array)
-        phase_stamps.append(
-            PhaseStamp(
-                phase=best_phase,
-                matchval=sad_array[best_phase],
-                neighbourMatchVals=(
-                    sad_array[(best_phase - 1) % canonical_hb_dwt.shape[2]],
-                    sad_array[(best_phase + 1) % canonical_hb_dwt.shape[2]]
-                )
-            )
+    best_phase = np.argmin(sad_array)
+    return PhaseStamp(
+        phase=best_phase,
+        matchval=sad_array[best_phase],
+        neighbourMatchVals=(
+            sad_array[(best_phase - 1) % canonical_hb_dwt.shape[2]],
+            sad_array[(best_phase + 1) % canonical_hb_dwt.shape[2]]
         )
+    )
+
+
+def phase_stamp_images(dwt_array, canonical_hb_dwt):
+    # phase_stamps = []
+    tic = time.time()
+    if not settings.MULTIPROCESSING:
+        phase_stamps = map(
+            lambda frame: phase_stamp_image(
+                dwt_array[:, :, frame],
+                canonical_hb_dwt
+            ),
+            range(dwt_array.shape[2])
+        )
+    else:
+        proc_pool = ThreadPool(processes=settings.NUM_PROCESSES)
+
+        temp_var = proc_pool.map_async(
+            lambda frame: phase_stamp_image(
+                dwt_array[:, :, frame],
+                canonical_hb_dwt
+            ),
+            range(dwt_array.shape[2]),
+            settings.NUM_CHUNKS
+        )
+
+        try:
+            phase_stamps = temp_var.get(timeout=settings.TIMEOUT * 10)
+        except TimeoutError:
+            logging.info('Phase stamping Timed out in %d seconds' %
+                         (settings.TIMEOUT * 10))
+
+    print 'Completed phase stamping in', time.time() - tic
+
+    # for frame in range(dwt_array.shape[2]):
+    #     curr_frame = dwt_array[:, :, frame]
+
+    #     sad_array = np.zeros(canonical_hb_dwt.shape[2])
+
+    #     for phase in range(canonical_hb_dwt.shape[2]):
+    #         canon_frame = canonical_hb_dwt[:, :, phase]
+    #         sad_array[phase] = np.sum(np.abs(curr_frame - canon_frame))
+
+    #     # plt.plot(sad_array)
+    #     # plt.show()
+
+    #     best_phase = np.argmin(sad_array)
+    #     phase_stamps.append(
+    #         PhaseStamp(
+    #             phase=best_phase,
+    #             matchval=sad_array[best_phase],
+    #             neighbourMatchVals=(
+    #                 sad_array[(best_phase - 1) % canonical_hb_dwt.shape[2]],
+    #                 sad_array[(best_phase + 1) % canonical_hb_dwt.shape[2]]
+    #             )
+    #         )
+    #     )
 
     pickle_object(phase_stamps, 'phase_stamps')
 
@@ -685,14 +870,16 @@ def phase_stamp_images(dwt_array, canonical_hb_dwt):
 
 def compile_phase_z_matrix(framelist, z_stamps, phase_stamps, hb_length):
     phase_z_matrix = np.empty(
-        (hb_length, int(max(z_stamps)) + 1), dtype=np.object)
+        (hb_length, int(np.nanmax(z_stamps)) + 1), dtype=np.object)
     phase_z_density = np.zeros(phase_z_matrix.shape)
 
     for i in range(hb_length):
-        for j in range(int(max(z_stamps)) + 1):
+        for j in range(int(np.nanmax(z_stamps)) + 1):
             phase_z_matrix[i, j] = list()
 
     for index, frame in enumerate(framelist):
+        if np.isnan(z_stamps[index]):
+            continue
         # print phase_stamps[index].phase, ',', z_stamps[index]
         phase_z_matrix[phase_stamps[index].phase, int(z_stamps[index])].append(
             (frame, phase_stamps[index].matchval)
@@ -722,7 +909,7 @@ def find_best_frame(phi_z_cell):
 
 
 def write_phase_stamped_fluorescent_images(phi_z_matrix, read_from, write_to):
-    setting['fm_images']
+    print setting['fm_images']
     phi_range, z_range = phi_z_matrix.shape
 
     rewrite_lookup = {}

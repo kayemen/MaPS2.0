@@ -11,7 +11,8 @@ from maps.helpers.tiffseriesimport import importtiff, writetiff
 from maps.helpers.img_proccessing import corr2
 from maps.helpers.gui_modules import load_frame, extract_window
 from maps.helpers.misc import pickle_object, unpickle_object
-from maps.settings import setting
+from maps.settings import setting, THREADED
+from maps.helpers.misc import LimitedThread
 
 import os
 import logging
@@ -51,7 +52,7 @@ def load_kymograph(kymo_path):
         kymo_array: numpy array of kymgraph pixel values
     '''
     kymo_array = np.asarray(tff.imread(kymo_path))
-    logger.debug('Kymograph dimensions: %s' % str(kymo_array.shape))
+    logger.info('Kymograph dimensions: %s' % str(kymo_array.shape))
     return kymo_array
 
 
@@ -86,14 +87,15 @@ def compute_raw_zstage(kymo_array, match_value=255):
             diff_row = frame_row[:-1] - frame_row[1:]
             # TODO: Once kymograph generation is done internally this can be changed to point not matching 0
             matching_pixels = np.asarray(np.where(np.absolute(diff_row) == match_value))
-        z_stage[frame_no] = matching_pixels[0, -1]
+        z_stage[frame_no] = matching_pixels[0, 0]
+        # z_stage[frame_no] = matching_pixels[0, -1]
 
     pickle_object(z_stage, 'z_stage')
 
     return z_stage
 
 
-def compute_maxima_minima(z_stage, maxima_threshold=10):
+def compute_zooks(z_stage):
     '''
     Find the maxima and minima points in the z_stage data.
     From one minima to the next maxima is a zook. From a minima to the next maxima is a zik
@@ -109,7 +111,10 @@ def compute_maxima_minima(z_stage, maxima_threshold=10):
         minima_points: index of points at which minima occur in z_stage
         minima_values: actual values of minima
     '''
+    maxima_threshold = setting['kymo_zook_threshold']
+
     maxima_points = np.where((z_stage[1:] - z_stage[:-1]) < -maxima_threshold)[0].flatten()
+    maxima_points = maxima_points[np.where(maxima_points > setting['first_minima'])]
     maxima_values = z_stage[maxima_points]
 
     # # TODO: TEST Include the last zook and test if it breaks anything
@@ -132,12 +137,17 @@ def compute_maxima_minima(z_stage, maxima_threshold=10):
     # logger.debug('Maxima values:\n%s' % maxima_values)
     # logger.debug('Minima points:\n%s' % minima_points)
     # logger.debug('Minima values:\n%s' % minima_values)
+
+    zooks = [(start, end) for start, end in zip(minima_points, maxima_points)]
+
     pickle_object(
         (maxima_points, maxima_values, minima_points, minima_values),
         'extremum_points'
     )
 
-    return (maxima_points, maxima_values, minima_points, minima_values)
+    pickle_object(zooks, 'zooks')
+
+    return (maxima_points, maxima_values, minima_points, minima_values, zooks)
 
 
 def compute_zookzik_stats(maxima_points, minima_points):
@@ -175,12 +185,12 @@ def compute_zookzik_stats(maxima_points, minima_points):
     return zz_stats
 
 
-def compute_zook_extents(maxima_point, minima_point):
+def compute_zook_extents(zook_end, zook_start):
     '''
-    Function to compute the extent of frames to process in each zook. Added function to clean repeated code. Every zook has some frames ignored at start and end. Given the extent of the zook (start point and end point i.e maxima_point and next minima point) retuns the start and end frame numbers.
+    Function to compute the extent of frames to process in each zook. Added function to clean repeated code. Every zook has some frames ignored at start and end. Given the extent of the zook (start point and end point i.e zook_end and next minima point) retuns the start and end frame numbers.
     '''
-    start_slice = minima_point + setting['ignore_startzook']
-    end_slice = maxima_point - setting['ignore_endzook'] + 1
+    start_slice = zook_start + setting['ignore_startzook']
+    end_slice = zook_end - setting['ignore_endzook'] + 1
 
     return (start_slice, end_slice)
 
@@ -223,6 +233,7 @@ def compute_ideal_zstamp(z_stage, maxima_points, minima_points, ref_frame_no=0):
     OUTPUTS:
         z_stamp_det: deterministic version of z_stamp
     '''
+    # TODO: Change to use minim and maxima not determisinstic
     minima_points_deterministic = np.arange(0, len(minima_points)) * setting['ZookZikPeriod']
     maxima_points_deterministic = minima_points_deterministic + setting['ZookZikPeriod'] - 1
 
@@ -238,9 +249,12 @@ def compute_ideal_zstamp(z_stage, maxima_points, minima_points, ref_frame_no=0):
     # #check to make sure that the zebrafish bondary doesn't move much between the
     # #last frame of one zook and first frame of next zook
 
+    ref_frame_bias = (ref_frame_no - setting['index_start_at']) % setting['ZookZikPeriod']
+    print ref_frame_bias
+
     for i in xrange(len(minima_points)):
         z_stamp_det[minima_points_deterministic[i]: maxima_points_deterministic[i] +
-                    1] = np.round(np.arange(0 - ref_frame_no, setting['ZookZikPeriod'] - ref_frame_no) * pixel_shift_per_frame * setting['resampling_factor'])
+                    1] = np.round(np.arange(0 - ref_frame_bias, setting['ZookZikPeriod'] - ref_frame_bias) * pixel_shift_per_frame * setting['resampling_factor'])
 
     # if setting['plot_steps']:
     #     plt.plot(z_stamp_det)
@@ -312,84 +326,9 @@ def check_convexity(corr_points):
 
         if np.all(corr_points[1:best_slide] >= corr_points[:best_slide - 1]) and np.all(corr_points[best_slide + 2:] <= corr_points[best_slide + 1:-1]):
             return True
+        if np.all(corr_points[1:best_slide] <= corr_points[:best_slide - 1]) and np.all(corr_points[best_slide + 2:] >= corr_points[best_slide + 1:-1]):
+            return True
     return False
-
-
-def calculate_frame_optimal_shift(img_path, frame_no, ref_frame_window, x_start_resized, x_end_resized, y_start_resized_frame, y_end_resized_frame, z_stamp_optimal, z_stamp_det):
-    '''
-    Calculate optimal shift for single frame.
-    This method does the z stamp calculation with wiggle of "setting['slide_limit']" pixels in low-res domain.
-    This function can be threaded in the calling scope to improve performance.
-    It first finds the correlation at large gaps, checks if they form a convex set, and then searches in the smaller space around the maxima if convex..
-    '''
-    slide_limit_resized = setting['slide_limit'] * setting['resampling_factor']
-
-    # Load frame and scale
-    frame = load_frame(img_path, frame_no)
-    # Correlation matrix for frame. Reset to zero for each frame
-    corr_array = np.zeros(2 * slide_limit_resized + 1)
-
-    for slide_amount in np.arange(-slide_limit_resized, slide_limit_resized + 1, setting['resampling_factor']):
-        pass
-        # Compute shifted window params
-        y_start_resized_shifted = y_start_resized_frame + slide_amount
-        y_end_resized_shifted = y_end_resized_frame + slide_amount
-
-        # Compute window of frame
-        frame_window = extract_window(frame, x_start_resized, x_end_resized, y_start_resized_shifted, y_end_resized_shifted)
-
-        # Compute correlation
-        try:
-            corr_array[slide_amount + slide_limit_resized] = corr2(ref_frame_window, frame_window)
-        except:
-            corr_array[slide_amount + slide_limit_resized] = -1
-            # TODO: Raise error and stop process
-            print 'Error in Frame:', frame_no
-
-    # Compute best slide amount
-    best_slide_amount = np.argmax(corr_array) - slide_limit_resized
-
-    # Compute convexity
-    is_convex = check_convexity(corr_array)
-
-    if is_convex:
-        # Compute best maxima in local region
-        for slide_amount in np.arange(max(best_slide_amount - setting['resampling_factor'] + 1, -slide_limit_resized), min(best_slide_amount + setting['resampling_factor'], slide_limit_resized + 1)):
-            # Compute shifted window params
-            y_start_resized_shifted = y_start_resized_frame + slide_amount
-            y_end_resized_shifted = y_end_resized_frame + slide_amount
-
-            # Compute window of frame
-            frame_window = extract_window(frame, x_start_resized, x_end_resized, y_start_resized_shifted, y_end_resized_shifted)
-
-            # Compute correlation
-            try:
-                corr_array[slide_amount + slide_limit_resized] = corr2(ref_frame_window, frame_window)
-            except:
-                corr_array[slide_amount + slide_limit_resized] = -1
-                # TODO: Raise error and stop process
-                print 'Error in Frame:', frame_no
-
-    else:
-        # Find optima in overall region
-        for slide_amount in np.arange(-slide_limit_resized, slide_limit_resized + 1):
-            # Compute shifted window params
-            y_start_resized_shifted = y_start_resized_frame + slide_amount
-            y_end_resized_shifted = y_end_resized_frame + slide_amount
-
-            # Compute window of frame
-            frame_window = extract_window(frame, x_start_resized, x_end_resized, y_start_resized_shifted, y_end_resized_shifted)
-
-            # Compute correlation
-            try:
-                corr_array[slide_amount + slide_limit_resized] = corr2(ref_frame_window, frame_window)
-            except:
-                corr_array[slide_amount + slide_limit_resized] = -1
-                # TODO: Raise error and stop process
-                print 'Error in Frame:', frame_no
-
-    # Compute ideal shift using corr_array
-    z_stamp_optimal[frame_no] = z_stamp_det[frame_no] + np.argmax(corr_array) - slide_limit_resized
 
 
 def calculate_frame_optimal_shift_yz(img_path, frame_no, ref_frame_window, x_start_resized, x_end_resized, y_start_resized_frame, y_end_resized_frame, z_stamp_optimal, y_stamp_optimal, z_stamp_det):
@@ -422,81 +361,31 @@ def calculate_frame_optimal_shift_yz(img_path, frame_no, ref_frame_window, x_sta
     # Compute window of frame
     frame_window = extract_window(frame, x_start_resized_shifted, x_end_resized_shifted, y_start_resized_shifted, y_end_resized_shifted)
 
+    # plt.imshow(frame_window)
+    # plt.figure()
+    # plt.imshow(ref_frame_window)
+    # plt.show()
+
     # TODO: Try on entire frame instead of window
-    corr_array = cv2.matchTemplate(frame_window.astype('float32'), ref_frame_window.astype('float32'), cv2_methods['ccoeff'])
+    corr_array = cv2.matchTemplate(frame_window.astype('float32'), ref_frame_window.astype('float32'), cv2_methods['ccorr'])
+
+    # plt.imshow(corr_array)
+    # plt.show()
+    # Check convexity
+    # if not (check_convexity(corr_array.max(axis=0)) and check_convexity(corr_array.max(axis=1))):
+    #     print 'Convexity error in frame %d' % frame_no
 
     # Compute ideal shift using corr_array
     z_stamp_optimal[frame_no] = z_stamp_det[frame_no] + corr_array.max(axis=0).argmax() - slide_limit_resized
     y_stamp_optimal[frame_no] = corr_array.max(axis=1).argmax() - slide_limit_x_resized
 
 
-def compute_frame_shift_values(img_path, maxima_points, minima_points, z_stamp_det, x_end, height, y_end, width, ref_frame_no):
+def compute_frame_shift_values_yz(img_path, maxima_points, minima_points, z_stamp_det, x_end, height, y_end, width, ref_frame_no, offset=0):
     '''
     Compute optimal z stamp values for entire image sequence.
     '''
-    z_stamp_optimal = np.zeros(z_stamp_det.shape)
+    THREADED = True
 
-    # Time stamp values
-    zook_time_stats = np.zeros(len(minima_points) - setting['ignore_zooks_at_start'])
-
-    # Load window parameters
-    # x_start, x_end, y_start, y_end, height, width, ref_frame_no = load_correlation_window_params('corr_window.csv')
-
-    # x_start_resized = x_start * setting['resampling_factor']
-    x_end_resized = x_end * setting['resampling_factor']
-    height_resized = height * setting['resampling_factor']
-    x_start_resized = x_end_resized - height_resized
-    # y_start_resized = y_start * setting['resampling_factor']
-    y_end_resized = y_end * setting['resampling_factor']
-    width_resized = width * setting['resampling_factor']
-    y_start_resized = y_end_resized - width_resized
-
-    # Shifting deterministic z stamp to make reference frame have 0 shift
-    # TODO: TEST if resampling can be done here instead of before rounding step
-    # z_stamp_det = (z_stamp_det - z_stamp_det[ref_frame_no]) * setting['resampling_factor']
-    # z_stamp_det = (z_stamp_det - z_stamp_det[ref_frame_no])
-
-    # Load reference frame
-    ref_frame = load_frame(img_path, ref_frame_no)
-
-    # Compute window of reference frame
-    ref_frame_window = extract_window(ref_frame, x_start_resized, x_end_resized, y_start_resized, y_end_resized)
-
-    # Create matrix of optimized z_stamps
-    for zook in np.arange(setting['ignore_zooks_at_start'], len(minima_points)):
-        start_frame, end_frame = compute_zook_extents(maxima_points[zook], minima_points[zook])
-
-        logger.debug('Processing Zook#%d' % zook)
-        tic = time.time()
-        for frame_no in np.arange(start_frame, end_frame):
-            # Compute window params
-            y_end_resized_frame = y_end_resized + z_stamp_det[frame_no]
-            y_start_resized_frame = y_end_resized_frame - width_resized
-
-            # TODO: Run as spawned thread
-            # TODO: Detect non convex corr arrays as bad zooks and make list
-            calculate_frame_optimal_shift(
-                img_path, frame_no,
-                ref_frame_window,
-                x_start_resized,
-                x_end_resized,
-                y_start_resized_frame,
-                y_end_resized_frame,
-                z_stamp_optimal,
-                z_stamp_det
-            )
-        # print time.time() - tic
-        zook_time_stats[zook - setting['ignore_zooks_at_start']] = time.time() - tic
-
-    z_stamp_optimal_resized = z_stamp_optimal / setting['resampling_factor']
-
-    return z_stamp_optimal, z_stamp_optimal_resized
-
-
-def compute_frame_shift_values_yz(img_path, maxima_points, minima_points, z_stamp_det, x_end, height, y_end, width, ref_frame_no):
-    '''
-    Compute optimal z stamp values for entire image sequence.
-    '''
     z_stamp_optimal = np.zeros(z_stamp_det.shape)
     y_stamp_optimal = np.zeros(z_stamp_det.shape)
 
@@ -522,7 +411,11 @@ def compute_frame_shift_values_yz(img_path, maxima_points, minima_points, z_stam
     for zook in np.arange(setting['ignore_zooks_at_start'], len(minima_points)):
         start_frame, end_frame = compute_zook_extents(maxima_points[zook], minima_points[zook])
 
-        print('Processing Zook#%d' % zook)
+        start_frame += offset - 1
+        end_frame += offset - 1
+
+        logging.debug('Processing Zook#%d' % zook)
+        # print 'Processing Zook#%d' % zook
         tic = time.time()
         for frame_no in np.arange(start_frame, end_frame):
             # Compute window params
@@ -530,22 +423,8 @@ def compute_frame_shift_values_yz(img_path, maxima_points, minima_points, z_stam
             y_start_resized_frame = y_end_resized_frame - width_resized
 
             # TODO: Detect non convex corr arrays as bad zooks and make list
-            # calculate_frame_optimal_shift_yz(
-            #     img_path, frame_no,
-            #     ref_frame_window,
-            #     x_start_resized,
-            #     x_end_resized,
-            #     y_start_resized_frame,
-            #     y_end_resized_frame,
-            #     z_stamp_optimal,
-            #     y_stamp_optimal,
-            #     z_stamp_det
-            # )
-
-            # TODO: Run as spawned thread with lock
-            frame_thread = threading.Thread(
-                target=calculate_frame_optimal_shift_yz,
-                args=(
+            if not THREADED:
+                calculate_frame_optimal_shift_yz(
                     img_path, frame_no,
                     ref_frame_window,
                     x_start_resized,
@@ -556,9 +435,23 @@ def compute_frame_shift_values_yz(img_path, maxima_points, minima_points, z_stam
                     y_stamp_optimal,
                     z_stamp_det
                 )
-            )
-            frame_thread.start()
-            frame_threads.append(frame_thread)
+            else:
+                frame_thread = threading.Thread(
+                    target=calculate_frame_optimal_shift_yz,
+                    args=(
+                        img_path, frame_no,
+                        ref_frame_window,
+                        x_start_resized,
+                        x_end_resized,
+                        y_start_resized_frame,
+                        y_end_resized_frame,
+                        z_stamp_optimal,
+                        y_stamp_optimal,
+                        z_stamp_det
+                    )
+                )
+                frame_thread.start()
+                frame_threads.append(frame_thread)
 
         zook_time_stats[zook - setting['ignore_zooks_at_start']] = time.time() - tic
 
@@ -645,113 +538,57 @@ def detect_bad_zooks(residues, maxima_points, minima_points, slopes, threshold_m
     return bad_zooks
 
 
-def z_stamping_step(kymo_path, frame_count, phase_img_path, use_old=False, datafile_name='z_stamp_opt.pkl'):
-    '''
-    Single function to handle entire z stamping step
-    '''
-    kymo_data = load_kymograph(kymo_path)
-    # Load window parameters
-    x_start, x_end, y_start, y_end, height, width, ref_frame_no = load_correlation_window_params('corr_window.csv')
-
-    z_stage_data = compute_raw_zstage(kymo_data[:frame_count, :])
-
-    (maxp, maxv, minp, minv) = compute_maxima_minima(z_stage_data)
-
-    # compute_zookzik_stats(maxp, minp)
-    z_stamp, _ = compute_zstamp(z_stage_data, maxp, minp, ref_frame_no)
-    z_stamp_det = compute_ideal_zstamp(z_stage_data, maxp, minp, ref_frame_no)
-
-    if not use_old:
-        z_stamp_opt, z_stamp_opt_downscaled = compute_frame_shift_values(phase_img_path, maxp, minp, z_stamp_det, x_end, height, y_end, width, ref_frame_no)
-
-        pickle_object(z_stamp_opt, datafile_name, dumptype='pkl')
-
-    else:
-        z_stamp_opt = unpickle_object(datafile_name)
-        z_stamp_opt_downscaled = z_stamp_opt / setting['resampling_factor']
-
-    z_stamp_cf, res, slope_list = compute_zstamp_curvefit(z_stamp_opt, maxp, minp)
-
-    bad_zooks = detect_bad_zooks(res, maxp, minp, slope_list)
-
-    return (z_stamp_opt, z_stamp_cf, res, bad_zooks, minp)
-
-
 # TODO: change to use settings
 def z_stamping_step_yz(kymo_path, frame_count, phase_img_path, use_old=False, datafile_name='z_stamp_optimal.pkl', datafile_name_x='x_stamp_optimal.pkl'):
     '''
     Single function to handle entire z stamping step
     '''
     kymo_data = load_kymograph(kymo_path)
+
     # Load window parameters
     x_start, x_end, y_start, y_end, height, width, ref_frame_no = load_correlation_window_params('corr_window.csv')
 
     z_stage_data = compute_raw_zstage(kymo_data[:frame_count, :])
 
-    (maxp, maxv, minp, minv) = compute_maxima_minima(z_stage_data)
+    # plt.plot(z_stage_data)
+
+    (maxp, maxv, minp, minv, zooks) = compute_zooks(z_stage_data)
 
     # compute_zookzik_stats(maxp, minp)
     z_stamp, _ = compute_zstamp(z_stage_data, maxp, minp, ref_frame_no)
     z_stamp_det = compute_ideal_zstamp(z_stage_data, maxp, minp, ref_frame_no)
 
+    # plt.plot(z_stamp_det)
+    # plt.show()
+
     if not use_old:
-        z_stamp_opt, x_stamp_opt = compute_frame_shift_values_yz(phase_img_path, maxp, minp, z_stamp_det, x_end, height, y_end, width, ref_frame_no)
+        z_stamp_opt, y_stamp_opt = compute_frame_shift_values_yz(phase_img_path, maxp, minp, z_stamp_det, x_end, height, y_end, width, ref_frame_no, offset=setting['index_start_at'])
 
     else:
         z_stamp_opt = unpickle_object(datafile_name)
-        x_stamp_opt = unpickle_object(datafile_name_x)
+        y_stamp_opt = unpickle_object(datafile_name_x)
 
     z_stamp_cf, res, slope_list = compute_zstamp_curvefit(z_stamp_opt, maxp, minp)
 
     bad_zooks = detect_bad_zooks(res, maxp, minp, slope_list)
 
-    return (z_stamp_opt, x_stamp_opt, z_stamp_cf, res, bad_zooks, minp)
+    return (z_stamp_opt, y_stamp_opt, z_stamp_cf, res, bad_zooks, minp)
 
 
-def shift_frames_and_store(img_path, z_stamps, discarded_zooks_list, minima_points, x_end, height, y_end, width, ref_frame_no, mask_path=''):
-    bad_zooks = [bz[0] for bz in discarded_zooks_list]
+def stationary_z_stamping(frame_count, phase_img_path, use_old=False, datafile_name='z_stamp_optimal_stat.pkl', datafile_name_x='x_stamp_optimal_stat.pkl'):
+    x_start, x_end, y_start, y_end, height, width, ref_frame_no = load_correlation_window_params('corr_window.csv')
 
-    height_resized = height * setting['resampling_factor']
-    width_resized = width * setting['resampling_factor']
-    x_end_resized = x_end * setting['resampling_factor']
-    x_start_resized = x_end_resized - height_resized
-    y_end_resized = y_end * setting['resampling_factor']
+    z_stamp_det = np.zeros(setting['stat_frame_count'])
 
-    processed_frame_list = []
+    if not use_old:
+        z_stamp_opt, y_stamp_opt = compute_frame_shift_values_yz(
+            phase_img_path, [setting['stat_index_start_at'] + setting['stat_frame_count']],
+            [setting['stat_index_start_at']], z_stamp_det, x_end, height, y_end, width, ref_frame_no, offset=setting['stat_index_start_at'])
+    else:
+        z_stamp_opt = unpickle_object(datafile_name)
+        y_stamp_opt = unpickle_object(datafile_name_x)
 
-    for zook in np.arange(setting['ignore_zooks_at_start'], len(minima_points)):
-        if zook in bad_zooks:
-            continue
-        maxima_points = (np.array(minima_points) + setting['ZookZikPeriod'] - 1)
-        start_frame, end_frame = compute_zook_extents(maxima_points[zook], minima_points[zook])
-        for frame_no in np.arange(start_frame, end_frame):
-            processed_frame_list.append(frame_no)
-            y_end_frame = y_end_resized + z_stamps[frame_no]
-            y_start_frame = y_end_frame - width_resized
-
-            frame = load_frame(img_path, frame_no, upsample=True)
-
-            cropped_frame = extract_window(frame, x_start_resized, x_end_resized + setting['resampling_factor'], y_start_frame, y_end_frame + setting['resampling_factor'])
-
-            # TODO: Remove astype. Kept only for testing images in fiji
-            cropped_frame_downsized = resize(
-                cropped_frame,
-                (
-                    cropped_frame.shape[0] / setting['resampling_factor'],
-                    cropped_frame.shape[1] / setting['resampling_factor']
-                ),
-                preserve_range=True
-            )
-
-            if setting['validTiff']:
-                cropped_frame_downsized = cropped_frame_downsized.astype('uint16')
-
-            # if setting['plot_steps']:
-            #     plt.imshow(cropped_frame, cmap=plt.cm.gray)
-            #     plt.show()
-
-            writetiff(cropped_frame_downsized, setting['bf_crop_path'], frame_no)
-    pickle_object(processed_frame_list, 'processed_frame_list.pkl', dumptype='pkl')
+    return z_stamp_opt, y_stamp_opt
 
 
 def downsize_and_writeframe(img_path, frame_no, x_start_frame, x_end_frame, y_start_frame, y_end_frame):
@@ -802,7 +639,7 @@ def shift_frames_and_store_yz(img_path, z_stamps, y_stamps, discarded_zooks_list
             x_end_frame = x_end_resized + y_stamps[frame_no]
             x_start_frame = x_end_frame - width_resized
 
-            writing_thread = threading.Thread(
+            writing_thread = LimitedThread(
                 target=downsize_and_writeframe,
                 args=(
                     img_path,
@@ -821,6 +658,7 @@ def shift_frames_and_store_yz(img_path, z_stamps, y_stamps, discarded_zooks_list
     # Wait for all writing threads to finish
     for writing_thread in writing_threads:
         writing_thread.join()
+        print len([1 for th in writing_threads if th.isAlive()]), ' threads still processing'
 
     pickle_object(processed_frame_list, 'processed_frame_list.pkl', dumptype='pkl')
     pickle_object(crop_write_time_stats, 'Cropping_time_stats')

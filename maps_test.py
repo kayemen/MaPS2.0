@@ -5,7 +5,7 @@ from maps.core.z_stamping import load_kymograph,\
     load_frame,\
     extract_window,\
     compute_raw_zstage,\
-    compute_maxima_minima,\
+    compute_zooks,\
     compute_zstamp,\
     compute_ideal_zstamp\
 
@@ -43,7 +43,7 @@ setting['BF_resolution'] = 0.6296
 # Prefix of image file names
 setting['image_prefix'] = 'Phase_Bidi1_'
 # Location of raw data dump. This includes pickled objects, csv files and plots
-setting['data_dump'] = 'D:\\Scripts\\MaPS\\Data sets\\Raw data\\'
+setting['workspace'] = 'D:\\Scripts\\MaPS\\Data sets\\Raw data\\'
 # Upsampling factor while finding optimal z stamp
 setting['resampling_factor'] = 5
 # Horizontal width of window within which best correlation is to be found (in
@@ -113,7 +113,7 @@ x_start, x_end, y_start, y_end, height, width, ref_frame_no = load_correlation_w
 
 z_stage_data = compute_raw_zstage(kymo_data[:frame_count, :])
 
-(maxp, maxv, minp, minv) = compute_maxima_minima(z_stage_data)
+(maxp, maxv, minp, minv) = compute_zooks(z_stage_data)
 
 # compute_zookzik_stats(maxp, minp)
 z_stamp, _ = compute_zstamp(z_stage_data, maxp, minp, frame_no)
@@ -185,7 +185,7 @@ for frame in np.arange(0, frame_count):
     plt.show()
     # plt.savefig(
     #     os.path.join(
-    #         setting['data_dump'],
+    #         setting['workspace'],
     #         'convex_check\\frame%d.tif' % (frame)
     #     ),
     #     bbox_inches='tight'
@@ -196,9 +196,9 @@ for frame in np.arange(0, frame_count):
     optimal_shifts_y = np.append(optimal_shifts_y, corr_coeffs_alt.max(axis=0).argmax()-25)
     # print 'Similarity-', corr2(corr_coeffs, corr_coeffs_alt)
     #
-    # writetiff((corr_coeffs*65535).astype('uint16'), os.path.join(setting['data_dump'], 'convex_check_corr2'), frame)
-    # writetiff((corr_coeffs_alt*65535).astype('uint16'), os.path.join(setting['data_dump'], 'convex_check_opencv'), frame)
-    # writetiff((np.power(corr_coeffs_alt, 25)*65535).astype('uint16'), os.path.join(setting['data_dump'], 'convex_check_opencv_gamma'), frame)
+    # writetiff((corr_coeffs*65535).astype('uint16'), os.path.join(setting['workspace'], 'convex_check_corr2'), frame)
+    # writetiff((corr_coeffs_alt*65535).astype('uint16'), os.path.join(setting['workspace'], 'convex_check_opencv'), frame)
+    # writetiff((np.power(corr_coeffs_alt, 25)*65535).astype('uint16'), os.path.join(setting['workspace'], 'convex_check_opencv_gamma'), frame)
 
 
 plt.plot(optimal_shifts_x, 'b')
