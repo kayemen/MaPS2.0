@@ -147,9 +147,14 @@ class Zooks:
                 zook.dwt_end_us = (
                     zook.dwt_end * setting['time_resampling_factor']) - (setting['time_resampling_factor'] - 1)
 
+    def get_true_frame_number(self, dwt_frame_no):
+        # corr_zook =
+        return dwt_frame_no
+
     def update_badzooks(self):
         for zook in self.zook_list:
-            zook.is_bad = zook.is_bad_zstage or zook.is_bad_convexity or zook.is_bad_shift or zook.generic_error or zook.override
+            zook.is_bad = (zook.is_bad_zstage or zook.is_bad_convexity or zook.is_bad_shift or zook.generic_error) and (
+                not zook.override)
 
     def override_bad_zooks(self, zooklist):
         for zook in zooklist:
@@ -235,7 +240,10 @@ def compute_zooks(z_stage):
 
     minima_points = np.asarray([setting.get('first_minima', 0)])
     for i in xrange(len(maxima_points) - 1):
-        new_minima = np.argmin(z_stage[maxima_points[i]: maxima_points[i + 1]])
+        # OLD
+        # new_minima = np.argmin(z_stage[maxima_points[i]: maxima_points[i + 1]])
+        # NEW
+        new_minima = 1
         minima_points = np.append(minima_points, maxima_points[i] + new_minima)
 
     # # TODO: TEST Include the last zook and test if it breaks anything
@@ -358,9 +366,9 @@ def compute_deterministic_zstamp(z_stamp, zooks, ref_frame_no=0, z_stamp_pkl_nam
             pixel_shift_per_frame * setting['resampling_factor']
         )
 
-    zooks.trim_zooks()
-
     pickle_object(z_stamp_det, z_stamp_pkl_name)
+
+    zooks.trim_zooks()
 
     return z_stamp_det
 
@@ -493,85 +501,52 @@ def calculate_frame_optimal_shift_yz(img_path, prefix, frame_no, offset, ref_fra
                     'thickness': 10
                 }
             ))
-            plt.show()
+            plt.show(block=False)
 
         # TODO: Try on entire frame instead of window
         corr_array = cv2.matchTemplate(frame_window.astype(
-            'float32'), ref_frame_window.astype('float32'), cv2_methods['ccoeff_norm'])
+            'float32'), ref_frame_window.astype('float32'), cv2_methods['ccorr_norm'])
 
-        if PLOT:
-            # plt.figure()
-            # plt.imshow(corr_array, cmap='gray')
-            # plt.figure()
-            # plt.plot(corr_array.max(axis=0))
-            # plt.plot(corr_array.max(axis=1))
-            # plt.show()
-            print 'plotted'
+        # if PLOT:
+        #     plt.figure()
+        #     plt.imshow(corr_array, cmap='gray')
+        #     plt.colorbar()
+        #     # plt.figure()
+        #     # plt.plot(corr_array.max(axis=0))
+        #     # plt.plot(corr_array.max(axis=1))
+        #     plt.show(block=False)
+        #     print 'plotted'
 
         # Check convexity
         if not (check_convexity(corr_array.max(axis=0)) and check_convexity(corr_array.max(axis=1))):
             print 'Convexity error in frame %d' % frame_no
             zook.is_bad_convexity = True
 
-            # plt.figure()
-            # plt.imshow(create_image_overlay(
-            #     frame.astype('uint16'), overlay_type='rectangle',
-            #     overlay_data={
-            #         'pt1': (int(y_start_resized_shifted), int(x_start_resized_shifted), ),
-            #         'pt2': (int(y_end_resized_shifted), int(x_end_resized_shifted), ),
-            #         'color': (0, 65535, 0),
-            #         'thickness': 10
-            #     }
-            # ))
-            # plt.show()
-            # plt.figure()
-            # plt.imshow(create_image_overlay(
-            #     frame.astype('uint16'), overlay_type='rectangle',
-            #     overlay_data={
-            #         'pt1': (int(y_start_resized_shifted), int(x_start_resized_shifted), ),
-            #         'pt2': (int(y_end_resized_shifted), int(x_end_resized_shifted), ),
-            #         'color': (0, 65535, 0),
-            #         'thickness': 10
-            #     }
-            # ))
-            # plt.figure()
-            # plt.plot(corr_array.max(axis=0))
-            # plt.plot(corr_array.max(axis=1))
-            # plt.show()
-            # fig = plt.figure()
-            # plt.plot(corr_array.max(axis=0))
-            # plt.plot(corr_array.max(axis=1))
-            # write_error_plot(fig, 'corr_frame_%d.png' % frame_no)
-            # plt.close('all')
-            # del fig
             if DEBUG:
                 print check_convexity(corr_array.max(axis=0))
                 print check_convexity(corr_array.max(axis=1))
-                # plt.figure()
-                # plt.plot(corr_array.max(axis=0))
-                # plt.plot(corr_array.max(axis=1))
-                # plt.show()
+                plt.figure()
+                plt.plot(corr_array.max(axis=0))
+                plt.plot(corr_array.max(axis=1))
+                plt.show()
                 print 'plotted'
 
         # Compute ideal shift using corr_array
         try:
-            y_shift = corr_array.max(axis=0).argmax()
-            x_shift = corr_array.max(
-                axis=1).argmax()
+            y_shift = corr_array.max(axis=0).argmax() - slide_limit_resized
+            x_shift = corr_array.max(axis=1).argmax() - slide_limit_x_resized
 
             z_stamp_optimal[frame_no] = z_stamp_det[frame_no] + y_shift
             y_stamp_optimal[frame_no] = x_shift
 
             if setting['write_ref_window']:
                 write_window = extract_window(
-                    frame_window, x_shift, x_shift + height, y_shift, y_shift + width)
-                # print x_shift
-                # print y_shift
-                # print height
-                # print width
-                # print frame_window.shape
-                # print write_window.shape
-                # raw_input()
+                    frame_window,
+                    x_shift + slide_limit_x_resized,
+                    x_shift + slide_limit_x_resized + height,
+                    y_shift + slide_limit_resized,
+                    y_shift + slide_limit_resized + width
+                )
                 write_window = resize(
                     write_window,
                     (
@@ -584,12 +559,29 @@ def calculate_frame_optimal_shift_yz(img_path, prefix, frame_no, offset, ref_fra
                 writetiff(write_window, setting[
                           'cropped_ref_windows'], frame_no)
 
+                if PLOT:
+                    plt.figure()
+                    plt.imshow(create_image_overlay(
+                        frame_window.astype('uint16'), overlay_type='rectangle',
+                        overlay_data={
+                            'pt1': (int(y_shift + slide_limit_resized), int(x_shift + slide_limit_x_resized), ),
+                            'pt2': (int(y_shift + slide_limit_resized + width), int(x_shift + slide_limit_x_resized + height), ),
+                            'color': (0, 65535, 0),
+                            'thickness': 10
+                        }
+                    ))
+                    plt.show(block=True)
+                    print 'plotted'
+
         except:
             traceback.print_exc()
     except:
         traceback.print_exc()
         print 'error in frame ', frame_no
+        print frame_window.shape
+        print ref_frame_window.shape
         zook.generic_error = True
+        # raw_input()
     # print frame_no, ',',
 
 
@@ -609,6 +601,8 @@ def compute_optimal_yz_stamp(img_path, zooks, z_stamp_det, offset=0, prefix=None
 
     x_start, x_end, y_start, y_end, height, width, ref_frame_no = load_window_params(
         corr_window_csv)
+
+    print '>>>', x_start, x_end, y_start, y_end, height, width, ref_frame_no
 
     # Time stamp values
     zook_time_stats = []
@@ -634,7 +628,7 @@ def compute_optimal_yz_stamp(img_path, zooks, z_stamp_det, offset=0, prefix=None
                 'thickness': 10
             }
         ))
-        plt.show(block=False)
+        plt.show(block=True)
         print 'plotted'
 
     # Compute window of reference frame
@@ -820,42 +814,46 @@ def adjust_relative_brightness(img, rel_intensity):
 
 
 def downsize_and_writeframe(img_path, prefix, frame_no, offset, x_end_resized, height_resized, y_end_resized, width_resized, z_stamps, y_stamps, write_to, adj_intensity, rel_intensity):
-    y_end_frame = y_end_resized + z_stamps[frame_no]
-    y_start_frame = y_end_frame - width_resized
-    x_end_frame = x_end_resized + y_stamps[frame_no]
-    x_start_frame = x_end_frame - height_resized
+    try:
+        y_end_frame = y_end_resized + z_stamps[frame_no]
+        y_start_frame = y_end_frame - width_resized
+        x_end_frame = x_end_resized + y_stamps[frame_no]
+        x_start_frame = x_end_frame - height_resized
 
-    cropped_frame = load_frame(
-        img_path, frame_no, index_start_number=offset, prefix=prefix, upsample=True
-    )
-
-    cropped_frame = extract_window(
-        cropped_frame,
-        x_start_frame,
-        x_end_frame + setting['resampling_factor'],
-        y_start_frame,
-        y_end_frame + setting['resampling_factor']
-    )
-
-    cropped_frame_downsized = resize(
-        cropped_frame,
-        (
-            cropped_frame.shape[0] / setting['resampling_factor'],
-            cropped_frame.shape[1] / setting['resampling_factor']
-        ),
-        preserve_range=True
-    )
-
-    if adj_intensity:
-        cropped_frame_downsized = adjust_relative_brightness(
-            cropped_frame_downsized,
-            rel_intensity
+        cropped_frame = load_frame(
+            img_path, frame_no, index_start_number=offset, prefix=prefix, upsample=True
         )
 
-    if setting['validTiff']:
-        cropped_frame_downsized = cropped_frame_downsized.astype('uint16')
+        cropped_frame = extract_window(
+            cropped_frame,
+            x_start_frame,
+            x_end_frame + setting['resampling_factor'],
+            y_start_frame,
+            y_end_frame + setting['resampling_factor']
+        )
 
-    writetiff(cropped_frame_downsized, write_to, frame_no)
+        cropped_frame_downsized = resize(
+            cropped_frame,
+            (
+                cropped_frame.shape[0] / setting['resampling_factor'],
+                cropped_frame.shape[1] / setting['resampling_factor']
+            ),
+            preserve_range=True
+        )
+
+        if adj_intensity:
+            cropped_frame_downsized = adjust_relative_brightness(
+                cropped_frame_downsized,
+                rel_intensity
+            )
+
+        if setting['validTiff']:
+            cropped_frame_downsized = cropped_frame_downsized.astype('uint16')
+
+        writetiff(cropped_frame_downsized, write_to, frame_no)
+    except:
+        traceback.print_exc()
+        print 'write Exception in', frame_no
     # print frame_no
 
 
@@ -950,10 +948,10 @@ def shift_frames_and_store_yz(img_path, prefix, offset, z_stamps, y_stamps, zook
                 settings.NUM_CHUNKS
             )
             try:
-                temp_var.get(timeout=settings.TIMEOUT * 5)
+                temp_var.get(timeout=settings.TIMEOUT * 20)
             except TimeoutError:
                 logging.info('Zook %d timed out in %d seconds' %
-                             (zook.id, settings.TIMEOUT * 5))
+                             (zook.id, settings.TIMEOUT * 20))
             del proc_pool
 
         # if WRITE_REFERENCE_WINDOW:
@@ -964,7 +962,7 @@ def shift_frames_and_store_yz(img_path, prefix, offset, z_stamps, y_stamps, zook
 
     pickle_object(crop_write_time_stats, 'cropping_time_stats')
 
-    print 'Average time for Cropping and writing to disk:%f s/zook' % (sum(crop_write_time_stats) / len(crop_write_time_stats))
+    print 'Average time for Cropping and writing to disk:%f s/zook' % (sum(crop_write_time_stats) / (len(crop_write_time_stats) + 1))
 
 
 if __name__ == '__main__':

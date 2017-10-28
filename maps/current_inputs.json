@@ -72,6 +72,22 @@
     "type": "path"
   },
   {
+    "description": "Canonical heartbeat frames valid",
+    "varname": "canon_frames_valid",
+    "value": "Canonical_heartbeat_frames_valid",
+    "helptext": "",
+    "hidden": false,
+    "type": "path"
+  },
+  {
+    "description": "Canonical heartbeat frames masked",
+    "varname": "canon_dwt_masked",
+    "value": "Canonical_heartbeat_frames_masked",
+    "helptext": "",
+    "hidden": false,
+    "type": "path"
+  },
+  {
     "description": "Fluorescent images",
     "varname": "fm_images",
     "value": "Fluorescence_Bidi_1",
@@ -83,6 +99,14 @@
     "description": "Stamped images",
     "varname": "final_images",
     "value": "Final_imageset",
+    "helptext": "",
+    "hidden": false,
+    "type": "path"
+  },
+  {
+    "description": "Brother frames",
+    "varname": "brother_frames",
+    "value": "Brother_frames",
     "helptext": "",
     "hidden": false,
     "type": "path"
@@ -238,6 +262,14 @@
     "helptext": "",
     "hidden": false,
     "type": "int"
+  },
+  {
+    "description": "Do Y stage correction",
+    "varname": "y_correction",
+    "value": "True",
+    "helptext": "",
+    "hidden": false,
+    "type": "bool"
   },
   {
     "description": "Save valid TIFF for DWT",

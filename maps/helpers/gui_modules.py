@@ -62,7 +62,6 @@ def nothing(arg):
 
 
 def generate_mask(frame):
-    print 'Generating mask'
     ht, wt, _ = frame.shape
     mask = np.zeros((ht, wt), dtype=np.uint8)
     mask_array = np.array([freeform_data['ptarray']], dtype=np.int32)
@@ -169,64 +168,212 @@ def load_image_sequence(img_path_list):
     return img_seq
 
 
-def max_heartsize_frame(img):
-    cv2.namedWindow("MaxHeartframe")
-    cv2.setMouseCallback("MaxHeartframe", rectangular_select)
-
-    while cv2.getWindowProperty('MaxHeartframe', 0) >= 0:
-        # print cv2.getWindowProperty('MaxHeartframe', 0)
+def max_heartsize_frame(img_stack, startval=0):
+    def draw_frame(img):
         frame = create_image_overlay(
             img,
             overlay_type='rectangle',
             overlay_data=rect_data
         )
         cv2.imshow("MaxHeartframe", frame)
+
+    slider = False
+    if len(img_stack.shape) > 2:
+        slider = True
+        slider_lim = img_stack.shape[2] - 1
+    #     img = img_stack[:, :, 0]
+    # else:
+    #     img = img_stack
+
+    cv2.namedWindow("MaxHeartframe")
+    cv2.setMouseCallback("MaxHeartframe", rectangular_select)
+
+    if slider:
+        cv2.createTrackbar(
+            'Frame', 'MaxHeartframe', 0, slider_lim,
+            # lambda frame_id: draw_frame(img_stack[:, :, frame_id])
+            lambda x: None
+        )
+
+    while cv2.getWindowProperty('MaxHeartframe', 0) >= 0:
+        # print cv2.getWindowProperty('MaxHeartframe', 0)
+        img = img_stack[:, :, cv2.getTrackbarPos(
+            'Frame', 'MaxHeartframe')] if slider else img_stack
+        draw_frame(img)
         key = cv2.waitKey(1) & 0xFF
         if key == 13:
             break
 
+    if slider:
+        ref_frame = startval + cv2.getTrackbarPos('Frame', 'MaxHeartframe')
+    else:
+        ref_frame = None
+
     cv2.destroyAllWindows()
 
+    return ref_frame
 
-def masking_window_frame(img):
-    cv2.namedWindow("CropFrame")
-    cv2.setMouseCallback("CropFrame", rectangular_select)
 
-    print img.shape
-    while cv2.getWindowProperty('CropFrame', 0) >= 0:
+def masking_window_frame(img_stack, crop_selection=True, mask_selection=False, startval=0):
+    global mask_array
+
+    def draw_crop_frame(img):
         frame = create_image_overlay(
             img,
             overlay_type='rectangle',
             overlay_data=rect_data
         )
-        cv2.imshow("CropFrame", frame)
-        key = cv2.waitKey(1) & 0xFF
-        if key == 13:
-            break
+        cv2.imshow('CropFrame', frame)
 
-    cv2.namedWindow("MaskFrame")
-    cv2.setMouseCallback("MaskFrame", freeform_select)
-
-    pt1 = rect_data['pt1']
-    pt2 = rect_data['pt2']
-    crop_region = img[pt1[1]:pt2[1], pt1[0]:pt2[0]]
-
-    print crop_region.shape
-    while cv2.getWindowProperty('MaskFrame', 0) >= 0:
+    def draw_mask_frame(img):
         mask_region = create_image_overlay(
-            crop_region,
+            img,
             overlay_type='freeform',
             overlay_data=freeform_data
         )
         cv2.imshow("MaskFrame", mask_region)
-        key = cv2.waitKey(1) & 0xFF
-        if key == 13:
-            break
 
-    mask_frame = generate_mask(mask_region)
+    slider = False
+    if len(img_stack.shape) > 2:
+        slider = True
+        slider_lim = img_stack.shape[2] - 1
+    #     img = img_stack[:, :, 0]
+    # else:
+    #     img = img_stack
+
+    if crop_selection:
+        cv2.namedWindow("CropFrame")
+        cv2.setMouseCallback("CropFrame", rectangular_select)
+
+        if slider:
+            cv2.createTrackbar(
+                'Frame', 'CropFrame', 0, slider_lim,
+                lambda x: None
+            )
+
+        while cv2.getWindowProperty('CropFrame', 0) >= 0:
+            img = img_stack[:, :, cv2.getTrackbarPos(
+                'Frame', 'CropFrame')] if slider else img_stack
+            draw_crop_frame(img)
+            key = cv2.waitKey(1) & 0xFF
+            if key == 13:
+                break
+
+        pt1 = rect_data['pt1']
+        pt2 = rect_data['pt2']
+        t11, t21 = (min(pt1[1], pt2[1]), max(pt1[1], pt2[1]))
+        t10, t20 = (min(pt1[0], pt2[0]), max(pt1[0], pt2[0]))
+        pt1 = (t10, t11)
+        pt2 = (t20, t21)
+        crop_region = img[pt1[1]:pt2[1] + 1, pt1[0]:pt2[0] + 1]
+
+        if slider:
+            frame_no = startval + cv2.getTrackbarPos('Frame', 'CropFrame')
+        else:
+            frame_no = None
+
+    else:
+        crop_region = img_stack
+        frame_no = None
+
+    slider = False
+    if len(crop_region.shape) > 2:
+        slider = True
+        slider_lim = crop_region.shape[2] - 1
+    #     img = crop_region[:, :, 0]
+    # else:
+    #     img = crop_region
+
+    if mask_selection:
+        cv2.namedWindow("MaskFrame")
+        cv2.setMouseCallback("MaskFrame", freeform_select)
+
+        if slider:
+            cv2.createTrackbar(
+                'Frame', 'MaskFrame', 0, slider_lim,
+                lambda x: None
+            )
+
+        while cv2.getWindowProperty('MaskFrame', 0) >= 0:
+            img = crop_region[:, :, cv2.getTrackbarPos(
+                'Frame', 'MaskFrame')] if slider else crop_region
+            draw_mask_frame(img)
+            key = cv2.waitKey(1) & 0xFF
+            if key == 13:
+                break
+
+        mask_array = generate_mask(
+            create_image_overlay(
+                img,
+                overlay_type='freeform',
+                overlay_data=freeform_data
+            )
+        )
+
+        cv2.namedWindow("mask")
+        while cv2.getWindowProperty('mask', 0) >= 0:
+            cv2.imshow('mask', mask_array)
+            key = cv2.waitKey(1) & 0xFF
+            if key == 13:
+                break
+
+        if slider:
+            frame_no = startval + cv2.getTrackbarPos('Frame', 'MaskFrame')
+        # else:
+        #     frame_no = None
+
+        cv2.destroyAllWindows()
+
+        return frame_no, mask_array
+
     cv2.destroyAllWindows()
-    cv2.imshow('mask', mask_frame)
-    cv2.waitKey(0)
+    return frame_no
+# def masking_window_frame(img):
+#     cv2.namedWindow("CropFrame")
+#     cv2.setMouseCallback("CropFrame", rectangular_select)
+
+#     print img.shape
+#     while cv2.getWindowProperty('CropFrame', 0) >= 0:
+#         frame = create_image_overlay(
+#             img,
+#             overlay_type='rectangle',
+#             overlay_data=rect_data
+#         )
+#         cv2.imshow("CropFrame", frame)
+#         key = cv2.waitKey(1) & 0xFF
+#         if key == 13:
+#             break
+
+#     cv2.namedWindow("MaskFrame")
+#     cv2.setMouseCallback("MaskFrame", freeform_select)
+
+#     pt1 = rect_data['pt1']
+#     pt2 = rect_data['pt2']
+#     t11, t21 = (min(pt1[1], pt2[1]), max(pt1[1], pt2[1]))
+#     t10, t20 = (min(pt1[0], pt2[0]), max(pt1[0], pt2[0]))
+#     pt1 = (t10, t11)
+#     pt2 = (t20, t21)
+#     # pt1[1], pt2[1] = (min(pt1[1], pt2[1]), max(pt1[1], pt2[1]))
+#     # pt1[0], pt2[0] = (min(pt1[0], pt2[0]), max(pt1[0], pt2[0]))
+
+#     crop_region = img[pt1[1]:pt2[1], pt1[0]:pt2[0]]
+
+#     print crop_region.shape
+#     while cv2.getWindowProperty('MaskFrame', 0) >= 0:
+#         mask_region = create_image_overlay(
+#             crop_region,
+#             overlay_type='freeform',
+#             overlay_data=freeform_data
+#         )
+#         cv2.imshow("MaskFrame", mask_region)
+#         key = cv2.waitKey(1) & 0xFF
+#         if key == 13:
+#             break
+
+#     mask_frame = generate_mask(mask_region)
+#     cv2.destroyAllWindows()
+#     cv2.imshow('mask', mask_frame)
+#     cv2.waitKey(0)
 
 
 def get_rect_params():
@@ -288,6 +435,19 @@ def load_frame(img_path, frame_no, upsample=True, crop=False, cropParams=(), ind
         img = extract_window(img, *cropParams)
 
     return img
+
+
+def apply_mask(frame, mask):
+    if not frame.shape == mask.shape:
+        raise Exception('Size of frame and mask not matching')
+
+    return frame[np.where(mask != 0)]
+
+
+def apply_unmask(masked_frame, mask):
+    unmasked_frame = np.zeros(mask.shape).astype(masked_frame.dtype)
+    unmasked_frame[np.where(mask != 0)] = masked_frame
+    return unmasked_frame
 
 
 if __name__ == '__main__':

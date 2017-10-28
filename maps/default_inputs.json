@@ -56,6 +56,30 @@
     "type": "path"
   },
   {
+    "description": "Canonical heartbeat frames",
+    "varname": "canon_frames",
+    "value": "Canonical_heartbeat_frames",
+    "helptext": "",
+    "hidden": false,
+    "type": "path"
+  },
+  {
+    "description": "Canonical heartbeat frames valid",
+    "varname": "canon_frames_valid",
+    "value": "Canonical_heartbeat_frames_valid",
+    "helptext": "",
+    "hidden": false,
+    "type": "path"
+  },
+  {
+    "description": "Canonical heartbeat frames masked",
+    "varname": "canon_dwt_masked",
+    "value": "Canonical_heartbeat_frames_masked",
+    "helptext": "",
+    "hidden": false,
+    "type": "path"
+  },
+  {
     "description": "Fluorescent images",
     "varname": "fm_images",
     "value": "Fluorescent_images",

@@ -116,13 +116,13 @@ def zook_approval_function(zooks, z_stamps=None):
 
     choice = ''
     for zook in bz:
-        err_msg = ''
-        err_msg += '|Bad zstage' if zook.is_bad_zstage else ''
-        err_msg += '|Bad convexity' if zook.is_bad_convexity else ''
-        err_msg += '|Bad correlation shift' if zook.is_bad_shift else ''
-        err_msg += '|Unknown error' if zook.generic_error else ''
-        print 'Zook#%d%s' % (zook.id, err_msg)
         if choice != 'p':
+            err_msg = ''
+            err_msg += '|Bad zstage' if zook.is_bad_zstage else ''
+            err_msg += '|Bad convexity' if zook.is_bad_convexity else ''
+            err_msg += '|Bad correlation shift' if zook.is_bad_shift else ''
+            err_msg += '|Unknown error' if zook.generic_error else ''
+            print 'Zook#%d%s' % (zook.id, err_msg)
             if z_stamps is not None:
                 choice = raw_input(
                     'Do you want to review frame plot?[y/n]').lower()

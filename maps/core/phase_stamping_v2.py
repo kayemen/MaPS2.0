@@ -7,6 +7,7 @@ import skimage.external.tifffile as tff
 from scipy import stats, signal
 import matplotlib.pyplot as plt
 from skimage.transform import resize
+import skimage.external.tifffile as tff
 import pywt
 
 from maps.helpers.tiffseriesimport import importtiff, writetiff
@@ -14,7 +15,7 @@ from maps.helpers.img_proccessing import corr2, ssim2
 from maps.helpers.misc import pickle_object,\
     unpickle_object
 from maps.settings import setting, read_setting_from_json, THREADED
-from maps.helpers.gui_modules import cv2_methods, load_frame, extract_window
+from maps.helpers.gui_modules import cv2_methods, load_frame, extract_window, apply_mask, apply_unmask, masking_window_frame
 from maps.helpers.logging_config import logger_config
 from maps.helpers.misc import LimitedThread
 from maps import settings
@@ -24,9 +25,11 @@ import logging
 import time
 import csv
 import cv2
+import code
 import platform
 import collections
 import threading
+import traceback
 import shutil
 from multiprocessing.pool import ThreadPool
 from multiprocessing import TimeoutError
@@ -196,11 +199,12 @@ def write_dwt_matrix(dwt_matrix, write_to, frame_indices, validTiff=False):
             settings.NUM_CHUNKS
         )
 
+        write_timeout = settings.TIMEOUT * 10
         try:
-            temp_var.get(timeout=100)
+            temp_var.get(timeout=write_timeout)
         except TimeoutError:
-            logging.info('Frame timed out in %d seconds' %
-                         (settings.TIMEOUT))
+            logging.info('Writing DWT frames timed out in %d seconds' %
+                         (write_timeout))
 
     # for index, frame_id in enumerate(frame_indices):
     #     # print('Writing DWT frame #%d' % frame_id)
@@ -255,11 +259,12 @@ def load_dwt_matrix(load_from, num_frames=None):
             settings.NUM_CHUNKS
         )
 
+        read_timeout = settings.TIMEOUT * 10
         try:
-            temp_var.get(timeout=100)
+            temp_var.get(timeout=read_timeout)
         except TimeoutError:
             logging.info('Frame timed out in %d seconds' %
-                         (settings.TIMEOUT))
+                         (read_timeout))
 
     # for index in xrange(num_frames):
     #     if THREADED:
@@ -418,6 +423,7 @@ def crop_and_compute_dwt_matrix(img_path, z_stamps, y_stamps, discarded_zooks_li
     writing_threads = []
 
     if write_to:
+        print 'Writing DWT frames'
         if THREADED:
             writing_threads.append(
                 LimitedThread(
@@ -481,18 +487,21 @@ def interchelate_dwt_array(dwt_array, zooks=None, write_to=None, pkl_file_name=N
         zook_gen = zooks.get_dwt_framelist(upsample=True)
         us_dwt_array = upsample_dwt_array(dwt_array[:, :, zook_gen.next()])
         for zook_lim in zook_gen:
-            print zook_lim
+            if zook_lim.stop > dwt_array.shape[2]:
+                break
+            # print zook_lim
             us_dwt_array = np.dstack(
                 (us_dwt_array,
                  upsample_dwt_array(dwt_array[:, :, zook_lim]))
             )
-            print us_dwt_array.shape
+            # print us_dwt_array.shape
     else:
         us_dwt_array = upsample_dwt_array(dwt_array)
 
     writing_threads = []
 
     if write_to:
+        print 'Writing interchelated DWT frames'
         if THREADED:
             writing_threads.append(
                 LimitedThread(
@@ -543,17 +552,18 @@ def compute_peak_harmonic(first_image, second_image, method, corr_array):
         )
 
 
-def compute_heartbeat_length(dwt_array, method='ccoeff_norm', comparison_plot=True, im_fps=480, nperseg=3000):
+def compute_heartbeat_length(dwt_array, method='ccoeff_norm', comparison_plot=True, im_fps=480):
     '''
     Compute the length of the heartbeat. Uses the DWT of the
     '''
-    color = iter(plt.cm.rainbow(np.linspace(0, 1, int(dwt_array.shape[2]))))
-
     time_taken = []
 
     hb_array = []
+
+    spectra_raw = []
     # TODO
-    for ref_frame in range(dwt_array.shape[2])[:100]:
+    for ref_frame in range(dwt_array.shape[2] // 2)[:500]:
+        print 'Processing frame:', ref_frame
         first_image = dwt_array[:, :, ref_frame]
         tic = time.time()
         x = []
@@ -591,22 +601,16 @@ def compute_heartbeat_length(dwt_array, method='ccoeff_norm', comparison_plot=Tr
             del proc_pool
 
         time_taken.append(time.time() - tic)
-        # print x
-
         # For absdiff and MSE
         # if method in ('sad', 'mse_norm'):
         x = np.asarray(x)
         x = np.max(x) - x
 
-        f, Pxx = signal.welch(x, im_fps, nperseg=nperseg)
+        spectra_raw.append(x.copy())
+
+        f, Pxx = signal.welch(x, im_fps, nperseg=dwt_array.shape[2])
 
         t = im_fps / f
-        # if comparison_plot:
-        #     plt.figure(211)
-        #     plt.plot(x)
-        #     print t[np.argmax(Pxx) - 10: np.argmax(Pxx) + 10]
-        #     comparison_plot = False
-        # raw_input()
         Pxx[np.where(t > 400)] = 0
         hb_array.append(t[np.argmax(Pxx)])
 
@@ -614,53 +618,136 @@ def compute_heartbeat_length(dwt_array, method='ccoeff_norm', comparison_plot=Tr
 
     pickle_object(cm_hb[0], 'common_heatbeat_period.pkl')
     pickle_object(time_taken, 'common_heatbeat_calctime.pkl')
+    pickle_object(spectra_raw[:400], 'raw_spectra.pkl')
 
     return cm_hb[0]
 
 
-def compute_sad(dwt_array, ref_dwt, i, sad_matrix):
-    for j in range(i, dwt_array.shape[2]):
-        curr_dwt = dwt_array[:, :, j]
+def standardize_brightness(image, method='minmax'):
+    '''
+    Standardize brightness of image and convert to range [0,1]
+    '''
+    image = image.astype('float64')
+    image = ((image - np.min(image)) / (np.max(image) - np.min(image)))
+    return image
+    # if method == 'minmax':
+    #     image = ((image - np.min(image)) / (np.max(image) - np.min(image)))
+    # elif method == 'musigma':
+    #     image = ((image - np.mean(image)) / (6 * np.std(image)))
 
-        sad_matrix[i, j] = sad_matrix[j, i] = np.sum(
-            np.absolute(ref_dwt - curr_dwt)
-        )
-    # print 'row %d done' % i
+
+def compute_diff_mat(dwt_array, ref_dwt, i, diff_matrix, method='sad'):
+    if method == 'sad':
+        for j in range(i, dwt_array.shape[2]):
+            curr_dwt = dwt_array[:, :, j]
+
+            diff_matrix[i, j] = diff_matrix[j, i] = np.sum(
+                np.absolute(ref_dwt - curr_dwt)
+            )
+
+    elif method == 'corr':
+        for j in range(i, dwt_array.shape[2]):
+            curr_dwt = dwt_array[:, :, j]
+
+            # Subtracting 1 to make max min behave same as SAD
+            diff_matrix[i, j] = diff_matrix[j, i] = 1 - cv2.matchTemplate(
+                ref_dwt.astype('float32'),
+                curr_dwt.astype('float32'),
+                cv2_methods['ccoeff_norm']
+            )[0][0]
+
+    elif method == 'nsad':
+        for j in range(i, dwt_array.shape[2]):
+            curr_dwt = dwt_array[:, :, j]
+
+            diff_matrix[i, j] = diff_matrix[j, i] = np.sum(
+                np.absolute(ref_dwt - curr_dwt)
+            ) / ref_dwt.size
 
 
-def compute_canonical_heartbeat(dwt_array, zooks, mean_hb_period, sad_matrix_pkl_name=None, write_to=None, use_pickled_sad=False):
+def compute_canonical_heartbeat(dwt_array, zooks, mean_hb_period, diff_method='sad', canon_method='count', diff_matrix_pkl_name=None, write_to=None, use_pickled_diff=False):
     '''
     Processes interpolated frame wavelets. find the best continuous sequence of heartbeats
+    diff_methods:
+        sad - Sum of absolute difference
+        ssad - Standardized brightness SAD
+        nsad - Normalized SAD - normalized by the number of pixels in 1 dwt frame
+        nssad - Normalized, standardized SAD
+        corr - Correlation coefficient
+
+    canon_methods:
+        count - Count the number of minima in each row. Take mean2std
+        sum - Mean of each row. Take mean2std
+        combo - Combination of count and sum
     '''
-    sad_matrix = np.zeros((dwt_array.shape[2], dwt_array.shape[2]))
+    diff_matrix = np.zeros((dwt_array.shape[2], dwt_array.shape[2]))
 
     threshold = 0.02
 
-    if use_pickled_sad:
-        sad_matrix = unpickle_object(sad_matrix_pkl_name)
+    # Standardize brightness if required
+    if diff_method in ('nssad', 'ssad'):
+        print 'Standardizing brightness'
+        diff_method = diff_method.replace('ss', 's')
+
+        if not settings.MULTIPROCESSING or True:
+            for i in range(dwt_array.shape[2]):
+                dwt_array[:, :, i] = standardize_brightness(dwt_array[:, :, i])
+            # dwt_array = map(
+            #     lambda frame_no: standardize_brightness(
+            #         dwt_array[:, :, frame_no]
+            #     ),
+            #     range(dwt_array.shape[2])
+            # )
+        else:
+            proc_pool = ThreadPool(processes=settings.NUM_PROCESSES)
+            temp_var = proc_pool.map_async(
+                lambda frame_no: standardize_brightness(
+                    dwt_array[:, :, frame_no]
+                ),
+                range(dwt_array.shape[2]),
+                settings.NUM_CHUNKS
+            )
+
+            timeout_standardize = settings.TIMEOUT * 30
+            try:
+                temp_var.get(timeout=timeout_standardize)
+            except TimeoutError:
+                print temp_var._number_left, 'frames left'
+                logging.info('DWT standardization timed out in %d seconds' %
+                             (timeout_standardize))
+                logging.info('%d frames did not get processed' %
+                             (temp_var._number_left))
+
+            del proc_pool
+
+    if use_pickled_diff:
+        diff_matrix = unpickle_object(diff_matrix_pkl_name)
     else:
         # time_taken = []
+        print 'Using method "%s" for diff_matrix calculation' % diff_method
         tic = time.time()
         sad_threads = []
 
         if not settings.MULTIPROCESSING:
             map(
-                lambda frame_no: compute_sad(
+                lambda frame_no: compute_diff_mat(
                     dwt_array,
                     dwt_array[:, :, frame_no],
                     frame_no,
-                    sad_matrix
+                    diff_matrix,
+                    diff_method
                 ),
                 range(dwt_array.shape[2])
             )
         else:
             proc_pool = ThreadPool(processes=settings.NUM_PROCESSES)
             temp_var = proc_pool.map_async(
-                lambda frame_no: compute_sad(
+                lambda frame_no: compute_diff_mat(
                     dwt_array,
                     dwt_array[:, :, frame_no],
                     frame_no,
-                    sad_matrix
+                    diff_matrix,
+                    diff_method
                 ),
                 range(dwt_array.shape[2]),
                 settings.NUM_CHUNKS
@@ -679,12 +766,12 @@ def compute_canonical_heartbeat(dwt_array, zooks, mean_hb_period, sad_matrix_pkl
             del proc_pool
 
         print 'Time taken for SAD matrix generation:', time.time() - tic
-        if sad_matrix_pkl_name:
-            pickle_object(sad_matrix, sad_matrix_pkl_name)
-            print 'sad_matrix pickled'
+        if diff_matrix_pkl_name:
+            pickle_object(diff_matrix, diff_matrix_pkl_name)
+            print 'diff_matrix pickled'
 
     # TODO: Check other values of threshold
-    threshold = 0.5 * np.max(sad_matrix)
+    threshold = 0.5 * np.max(diff_matrix)
     start_frame = 0
     num_contiguous_frames = (setting[
         'ZookZikPeriod'] - (setting['ignore_startzook'] + setting['ignore_endzook'])) * setting['time_resampling_factor']
@@ -692,67 +779,98 @@ def compute_canonical_heartbeat(dwt_array, zooks, mean_hb_period, sad_matrix_pkl
     # print num_contiguous_frames * setting['canonical_zook_count']
     # raw_input()
 
-    mean_clustered_match = np.ones(
-        num_contiguous_frames * setting['canonical_zook_count']) * mean_hb_period
-    stddev_clustered_match = np.ones(
-        num_contiguous_frames * setting['canonical_zook_count']) * mean_hb_period
-    mean2std_clustered_match = np.zeros(
-        num_contiguous_frames * setting['canonical_zook_count'])
+    # Using number of frames
+    if canon_method in ('count', 'combo'):
+        mean_clustered_match = np.ones(
+            num_contiguous_frames * setting['canonical_zook_count']) * mean_hb_period
+        stddev_clustered_match = np.ones(
+            num_contiguous_frames * setting['canonical_zook_count']) * mean_hb_period
+        mean2std_clustered_match = np.zeros(
+            num_contiguous_frames * setting['canonical_zook_count'])
+    # Using mean of row vals
+    if canon_method in ('sum', 'combo'):
+        mean_clustered_match_new = np.ones(
+            num_contiguous_frames * setting['canonical_zook_count']) * mean_hb_period
+        stddev_clustered_match_new = np.ones(
+            num_contiguous_frames * setting['canonical_zook_count']) * mean_hb_period
+        mean2std_clustered_match_new = np.zeros(
+            num_contiguous_frames * setting['canonical_zook_count'])
 
     clustered_match_array = []
     match_mat_array = []
 
     # print mean_hb_period
+    # TODO: To be optimized
     for zook in range(setting['canonical_zook_count'] - 2):
-        print range(int(start_frame) + (num_contiguous_frames // 4), int(start_frame + num_contiguous_frames - mean_hb_period) - (num_contiguous_frames // 4))
+        # print range(int(start_frame) + (num_contiguous_frames // 4),
+        # int(start_frame + num_contiguous_frames - mean_hb_period) -
+        # (num_contiguous_frames // 4))
         for frame in range(int(start_frame), int(start_frame + num_contiguous_frames - mean_hb_period)):
             # for frame in range(int(start_frame) + (num_contiguous_frames //
             # 4), int(start_frame + num_contiguous_frames - mean_hb_period) -
             # (num_contiguous_frames // 4)):
-            matching_frames = sad_matrix[frame: frame + mean_hb_period, :]
+            matching_frames = diff_matrix[frame: frame + mean_hb_period, :]
 
-            try:
+            if canon_method in ('count', 'combo'):
                 min_pos_in_col = np.argmin(matching_frames, axis=0)
-            except:
-                print start_frame
-                print num_contiguous_frames
-                print frame
-                print matching_frames.shape
-                raw_input('error')
 
-            match_mat = np.zeros(matching_frames.shape)
+                match_mat = np.zeros(matching_frames.shape)
 
-            for col in range(len(min_pos_in_col)):
-                if matching_frames[min_pos_in_col[col], col] < threshold:
-                    match_mat[min_pos_in_col[col], col] = 1
-                # else:
-                # print 'Threshold mismatch:',
-                # matching_frames[min_pos_in_col[col], col]
+                # TODO: To be vectorized
+                # TODO: Raise threshold
+                for col in range(len(min_pos_in_col)):
+                    if matching_frames[min_pos_in_col[col], col] < threshold:
+                        match_mat[min_pos_in_col[col], col] = 1
+                    # else:
+                    # print 'Threshold mismatch:',
+                    # matching_frames[min_pos_in_col[col], col]
 
-            clustered_match = np.sum(match_mat, axis=1)
+                clustered_match = np.sum(match_mat, axis=1)
 
-            # plt.plot(clustered_match)
-            # plt.show()
+                mean_clustered_match[frame] = np.mean(clustered_match)
+                stddev_clustered_match[frame] = np.std(clustered_match)
+                mean2std_clustered_match[frame] = mean_clustered_match[
+                    frame] / stddev_clustered_match[frame]
 
-            mean_clustered_match[frame] = np.mean(clustered_match)
-            stddev_clustered_match[frame] = np.std(clustered_match)
-            mean2std_clustered_match[frame] = mean_clustered_match[
-                frame] / stddev_clustered_match[frame]
+            if canon_method in ('sum', 'combo'):
+                clustered_match_new = np.mean(matching_frames, axis=1)
 
-            # print mean2std_clustered_match[frame]
+                mean_clustered_match_new[frame] = np.mean(clustered_match_new)
+                stddev_clustered_match_new = np.std(clustered_match_new)
+                mean2std_clustered_match_new = mean_clustered_match_new[
+                    frame] / stddev_clustered_match_new[frame]
 
-            clustered_match_array.append(clustered_match)
-            match_mat_array.append(match_mat)
+            # clustered_match_array.append(
+            #     (clustered_match, clustered_match_new))
+            # match_mat_array.append(match_mat)
 
         start_frame += num_contiguous_frames
 
-    pickle_object(mean_clustered_match, 'mean_clustered_match')
-    pickle_object(stddev_clustered_match, 'stddev_clustered_match')
+    # pickle_object(mean_clustered_match, 'mean_clustered_match')
+    # pickle_object(stddev_clustered_match, 'stddev_clustered_match')
+    # pickle_object(clustered_match_array, 'clustered_match_array')
+    # pickle_object(match_mat_array, 'match_mat_array')
 
-    print 'Canonical start', np.argmax(mean2std_clustered_match)
-    print 'Matchval', np.max(mean2std_clustered_match)
+    if canon_method == 'count':
+        canon_start = np.argmax(mean2std_clustered_match)
+    elif canon_method == 'sum':
+        canon_start = np.argmax(mean2std_clustered_match_new)
+    else:
+        canon_start = np.argmax(
+            mean2std_clustered_match + mean2std_clustered_match_new)
 
-    canon_start = np.argmax(mean2std_clustered_match)
+    # if diff_method == 'sad':
+    #     print 'Using argmax'
+    #     canon_start = np.argmax(mean2std_clustered_match)
+    # else:
+    #     print 'Using argmin'
+    #     canon_start = np.argmin(mean2std_clustered_match)
+
+    pickle_object(canon_start, 'canon_hb_start')
+    print 'Canonical start:', canon_start
+    print 'True Canonical start frame:', zooks.get_true_frame_number(canon_start)
+    # print 'Matchval', np.max(mean2std_clustered_match)
+
     writing_threads = []
 
     if write_to:
@@ -782,7 +900,7 @@ def compute_canonical_heartbeat(dwt_array, zooks, mean_hb_period, sad_matrix_pkl
     for writing_thread in writing_threads:
         writing_thread.join()
 
-    return dwt_array[:, :, canon_start: canon_start + mean_hb_period]
+    return (dwt_array[:, :, canon_start: canon_start + mean_hb_period], diff_matrix, canon_start)
 
 
 # TODO: replace with class
@@ -790,25 +908,39 @@ PhaseStamp = collections.namedtuple(
     'PhaseStamp', ['phase', 'matchval', 'neighbourMatchVals'])
 
 
-def phase_stamp_image(curr_frame, canonical_hb_dwt):
-    sad_array = np.zeros(canonical_hb_dwt.shape[2])
+def phase_stamp_image(curr_frame, canonical_hb_dwt, method='corr'):
+    diff_array = np.zeros(canonical_hb_dwt.shape[2])
 
-    for phase in range(canonical_hb_dwt.shape[2]):
-        canon_frame = canonical_hb_dwt[:, :, phase]
-        sad_array[phase] = np.sum(np.abs(curr_frame - canon_frame))
+    if method == 'sad':
+        for phase in range(canonical_hb_dwt.shape[2]):
+            canon_frame = canonical_hb_dwt[:, :, phase]
+            diff_array[phase] = np.sum(np.abs(curr_frame - canon_frame))
 
-    best_phase = np.argmin(sad_array)
+    elif method == 'corr':
+        for phase in range(canonical_hb_dwt.shape[2]):
+            canon_frame = canonical_hb_dwt[:, :, phase]
+            diff_array[phase] = 1 - cv2.matchTemplate(
+                curr_frame.astype('float32'),
+                canon_frame.astype('float32'),
+                cv2_methods['ccoeff_norm']
+            )[0][0]
+
+    else:
+        raise NotImplementedError(
+            'Method %s not implemented for phase stamping' % method)
+
+    best_phase = np.argmin(diff_array)
     return PhaseStamp(
         phase=best_phase,
-        matchval=sad_array[best_phase],
+        matchval=diff_array[best_phase],
         neighbourMatchVals=(
-            sad_array[(best_phase - 1) % canonical_hb_dwt.shape[2]],
-            sad_array[(best_phase + 1) % canonical_hb_dwt.shape[2]]
+            diff_array[(best_phase - 1) % canonical_hb_dwt.shape[2]],
+            diff_array[(best_phase + 1) % canonical_hb_dwt.shape[2]]
         )
     )
 
 
-def phase_stamp_images(dwt_array, canonical_hb_dwt):
+def phase_stamp_images(dwt_array, canonical_hb_dwt, method='corr'):
     # phase_stamps = []
     tic = time.time()
     if not settings.MULTIPROCESSING:
@@ -839,36 +971,278 @@ def phase_stamp_images(dwt_array, canonical_hb_dwt):
 
     print 'Completed phase stamping in', time.time() - tic
 
-    # for frame in range(dwt_array.shape[2]):
-    #     curr_frame = dwt_array[:, :, frame]
-
-    #     sad_array = np.zeros(canonical_hb_dwt.shape[2])
-
-    #     for phase in range(canonical_hb_dwt.shape[2]):
-    #         canon_frame = canonical_hb_dwt[:, :, phase]
-    #         sad_array[phase] = np.sum(np.abs(curr_frame - canon_frame))
-
-    #     # plt.plot(sad_array)
-    #     # plt.show()
-
-    #     best_phase = np.argmin(sad_array)
-    #     phase_stamps.append(
-    #         PhaseStamp(
-    #             phase=best_phase,
-    #             matchval=sad_array[best_phase],
-    #             neighbourMatchVals=(
-    #                 sad_array[(best_phase - 1) % canonical_hb_dwt.shape[2]],
-    #                 sad_array[(best_phase + 1) % canonical_hb_dwt.shape[2]]
-    #             )
-    #         )
-    #     )
-
     pickle_object(phase_stamps, 'phase_stamps')
 
     return phase_stamps
 
 
-def compile_phase_z_matrix(framelist, z_stamps, phase_stamps, hb_length):
+def mask_canonical_heartbeat(canonical_hb_dwt, num_masks=10, mask_pkl_file_name='mask_array', masked_canon_dwt_array='masked_canon_dwt', use_pickled_masks=False):
+    if not use_pickled_masks:
+        frames_per_mask = int(
+            np.ceil(canonical_hb_dwt.shape[2] / float(num_masks)))
+
+        mask_array = np.zeros(canonical_hb_dwt.shape)
+
+        canon_shape = canonical_hb_dwt[:, :, 0].shape
+
+        for mask in range(num_masks - 1):
+            print mask
+            us_canon_frames = resize(
+                canonical_hb_dwt[:, :, mask *
+                                 frames_per_mask: (mask + 1) * frames_per_mask],
+                (
+                    canon_shape[0] * 4,
+                    canon_shape[1] * 4,
+                    frames_per_mask
+                ),
+                preserve_range=True
+            )
+
+            print us_canon_frames.shape
+
+            _, mask_mat = masking_window_frame(
+                us_canon_frames.astype('float32'), crop_selection=False, mask_selection=True)
+
+            mask_mat = resize(
+                mask_mat,
+                (
+                    mask_mat.shape[0] * 0.25,
+                    mask_mat.shape[1] * 0.25,
+                ),
+                preserve_range=True
+            )
+
+            mask_array[:, :, mask * frames_per_mask: (mask + 1) * frames_per_mask] = np.dstack(
+                [mask_mat] * frames_per_mask
+            )
+
+        if canonical_hb_dwt.shape[2] % num_masks or True:
+            mask = mask + 1
+            print mask
+
+            rem_frames = canonical_hb_dwt.shape[2] % frames_per_mask
+
+            us_canon_frames = resize(
+                canonical_hb_dwt[:, :, mask * frames_per_mask:],
+                (
+                    canon_shape[0] * 4,
+                    canon_shape[1] * 4,
+                    rem_frames if rem_frames != 0 else frames_per_mask
+                ),
+                preserve_range=True
+            )
+
+            print us_canon_frames.shape
+
+            _, mask_mat = masking_window_frame(
+                us_canon_frames.astype('float32'), crop_selection=False, mask_selection=True)
+            mask_mat = resize(
+                mask_mat,
+                (
+                    mask_mat.shape[0] * 0.25,
+                    mask_mat.shape[1] * 0.25,
+                ),
+                preserve_range=True
+            )
+            mask_array[:, :, mask * frames_per_mask:] = np.dstack(
+                [mask_mat] * (rem_frames if rem_frames !=
+                              0 else frames_per_mask)
+            )
+
+        masked_canon_dwt = []
+
+        for phase in range(mask_array.shape[2]):
+            masked_canon_dwt.append(apply_mask(
+                canonical_hb_dwt[:, :, phase], mask_array[:, :, phase]))
+
+        pickle_object(mask_array, mask_pkl_file_name)
+        pickle_object(masked_canon_dwt, masked_canon_dwt_array)
+
+    else:
+        mask_array = unpickle_object('mask_array')
+        masked_canon_dwt = unpickle_object('masked_canon_dwt')
+
+    try:
+        write_dwt_matrix(
+            np.dstack(
+                map(
+                    lambda i: apply_unmask(
+                        masked_canon_dwt[i],
+                        mask_array[:, :, i]
+                    ),
+                    range(len(masked_canon_dwt))
+                )
+            ).astype('float32'),
+            setting['canon_dwt_masked'],
+            range(len(masked_canon_dwt))
+        )
+    except:
+        import traceback
+        import code
+        traceback.print_exc()
+        code.interact(local=locals())
+
+    return mask_array, masked_canon_dwt
+
+
+def phase_stamp_image_masked(curr_frame, canonical_hb_dwt, masks_array, method='corr', temp=0):
+    # print temp
+    tic = time.time()
+    diff_array = np.zeros(len(canonical_hb_dwt))
+
+    if method == 'sad':
+        for phase in range(len(canonical_hb_dwt)):
+            canon_frame = canonical_hb_dwt[phase]
+
+            masked_frame = apply_mask(curr_frame, masks_array[:, :, phase])
+
+            diff_array[phase] = np.sum(np.abs(masked_frame - canon_frame))
+
+    elif method == 'corr':
+        for phase in range(len(canonical_hb_dwt)):
+            canon_frame = canonical_hb_dwt[phase]
+            masked_frame = apply_mask(curr_frame, masks_array[:, :, phase])
+
+            # if masked_frame.shape != canon_frame.shape:
+            #     print 'dimension mismatch'
+            #     code.interact(local=locals())
+            # print (masked_frame.shape, canon_frame.shape)
+            try:
+                diff_array[phase] = 1 - cv2.matchTemplate(
+                    masked_frame.astype('float32'),
+                    canon_frame.astype('float32'),
+                    cv2_methods['ccoeff_norm']
+                )[0][0]
+            except:
+                print canon_frame.shape
+                print masked_frame.shape
+                # traceback.print_exc()
+                print 'error in', phase
+                diff_array[phase] = 1
+
+            # plt.imshow(apply_unmask(masked_frame, masks_array[:, :, phase]))
+            # plt.title('%d' % phase)
+            # plt.show()
+
+        # plt.plot(diff_array)
+        # plt.show()
+
+    else:
+        raise NotImplementedError(
+            'Method %s not implemented for phase stamping' % method)
+
+    best_phase = np.argmin(diff_array)
+    # print 'Diff:', diff_array[best_phase]
+    # print temp, 'done -', time.time() - tic
+
+    return PhaseStamp(
+        phase=best_phase,
+        matchval=diff_array[best_phase],
+        neighbourMatchVals=(
+            diff_array[(best_phase - 1) % len(canonical_hb_dwt)],
+            diff_array[(best_phase + 1) % len(canonical_hb_dwt)]
+        )
+    )
+
+
+def phase_stamp_images_masked(dwt_array, canonical_hb_dwt, masks_array, method='corr'):
+    tic = time.time()
+    if not settings.MULTIPROCESSING:
+        # print dwt_array.shape[2]
+        phase_stamps = map(
+            lambda frame: phase_stamp_image_masked(
+                dwt_array[:, :, frame],
+                canonical_hb_dwt,
+                masks_array,
+                method,
+                frame
+            ),
+            range(dwt_array.shape[2])
+        )
+    else:
+        proc_pool = ThreadPool(processes=5)
+
+        temp_var = proc_pool.map_async(
+            lambda frame: phase_stamp_image_masked(
+                dwt_array[:, :, frame],
+                canonical_hb_dwt,
+                masks_array,
+                method,
+                frame
+            ),
+            range(dwt_array.shape[2]),
+            settings.NUM_CHUNKS
+        )
+        print 'Spawned all processes'
+
+        try:
+            phase_stamps = temp_var.get(timeout=settings.TIMEOUT * 50)
+        except TimeoutError:
+            logging.info('Phase stamping Timed out in %d seconds' %
+                         (settings.TIMEOUT * 50))
+
+    print 'Completed phase stamping in', time.time() - tic
+
+    pickle_object(phase_stamps, 'masked_phase_stamps')
+
+    return phase_stamps
+
+
+def get_row(pz_row, rank=1):
+    # matchvals = [i[1] for i in cell]
+    for cell in pz_row:
+        cell = sorted(cell, key=lambda x: x[1])
+    # matches = map(lambda cell: cell[[i[1] for i in cell].index(
+        # min([i[1] for i in cell]))][1] if len(cell) else np.NAN, pz_row)
+    matches = map(lambda cell: cell[rank - 1][1]
+                  if len(cell) >= rank else np.NAN, pz_row)
+    return matches
+
+
+def moving_average(a, n=3):
+    ret = np.cumsum(a, dtype=float)
+    ret[n:] = ret[n:] - ret[:-n]
+    return ret[n - 1:] / n
+
+
+def correct_phase_stamp_matchvals(phase_stamps):
+    # Adjust phase stamps to remove degradation over time and degradation
+    # over zook
+    phase_stamps_matchvals = [i.matchval for i in phase_stamps]
+    phase_stamps_lp_matchvals = moving_average(phase_stamps_matchvals, n=1000)
+    corrected_phase_stamp_mathvals = phase_stamps_matchvals[:-999] - \
+        (phase_stamps_lp_matchvals - min(phase_stamps_lp_matchvals))
+
+    corrected_phase_stamps = []
+    for ind, i in enumerate(phase_stamps[:-999]):
+        # try:
+        # i.matchval = corrected_phase_stamp_mathvals[ind]
+        corrected_phase_stamps.append(PhaseStamp(
+            phase=i.phase, neighbourMatchVals=i.neighbourMatchVals, matchval=corrected_phase_stamp_mathvals[ind]))
+        # except:
+    # phase_stamps = phase_stamps[:-999]
+
+    return corrected_phase_stamps
+
+
+# TODO: COMMENT
+def filter_phi_z_mat(pz_mat):
+    pz_mat_density = np.zeros(pz_mat.shape)
+
+    for phi in range(pz_mat.shape[0]):
+        pz_row_matchvals = reduce(
+            lambda x, y: x + y, map(lambda cell: [i[1] for i in cell], pz_mat[phi, :]))
+        pz_median = np.median(np.asarray(pz_row_matchvals))
+        for ind, cell in enumerate(pz_mat[phi, :]):
+            cell = [i for i in cell if i[1] < pz_median]
+            pz_mat_density[phi, ind] = len(cell)
+        # for cell in pz_row:
+        #     cell = sorted(cell, key=lambda x: x[1])
+
+    return pz_mat, pz_mat_density
+
+
+def compile_phase_z_matrix(framelist, z_stamps, phase_stamps, hb_length, pz_mat_pkl_name='phase_z_matrix', pz_density_pkl_name='phase_z_density'):
     phase_z_matrix = np.empty(
         (hb_length, int(np.nanmax(z_stamps)) + 1), dtype=np.object)
     phase_z_density = np.zeros(phase_z_matrix.shape)
@@ -877,29 +1251,29 @@ def compile_phase_z_matrix(framelist, z_stamps, phase_stamps, hb_length):
         for j in range(int(np.nanmax(z_stamps)) + 1):
             phase_z_matrix[i, j] = list()
 
-    for index, frame in enumerate(framelist):
-        if np.isnan(z_stamps[index]):
+    phase_stamps = correct_phase_stamp_matchvals(phase_stamps)
+
+    for index, frame in enumerate(framelist[:-999]):
+        if np.isnan(z_stamps[frame]):
             continue
         # print phase_stamps[index].phase, ',', z_stamps[index]
-        phase_z_matrix[phase_stamps[index].phase, int(z_stamps[index])].append(
+        phase_z_matrix[phase_stamps[index].phase, int(z_stamps[frame])].append(
             (frame, phase_stamps[index].matchval)
         )
         phase_z_density[phase_stamps[index].phase, int(z_stamps[frame])] += 1
 
-    pickle_object(phase_z_matrix, 'phase_z_matrix')
-    pickle_object(phase_z_density, 'phase_z_density')
-
-    # phase_z_density = np.zeros(phase_z_matrix.shape)
-    # for i in range(phase_z_matrix.shape[0]):
-    #     for j in range(phase_z_matrix.shape[1]):
-    #         phase_z_density[i, j] = len(phase_z_matrix[i, j])
+    pickle_object(phase_z_matrix, pz_mat_pkl_name)
+    pickle_object(phase_z_density, pz_density_pkl_name)
 
     return phase_z_matrix, phase_z_density
 
 
 def get_fluorescent_filename(frame_no):
-    name_format = '%%s_%%0%dd_%%s.tif' % setting['fm_num_digits']
-    return name_format % (setting['fm_image_prefix'], setting['fm_index_start_at'] + frame_no, setting.get('fm_image_suffix', ''))
+    name_format = '%%s%%0%dd_%%s.tif' % setting['fm_num_digits']
+    ret_name = name_format % (setting['fm_image_prefix'], setting[
+                              'fm_index_start_at'] + frame_no, setting.get('fm_image_suffix', ''))
+    ret_name = ret_name.replace('_.tif', '.tif')
+    return ret_name
 
 
 def find_best_frame(phi_z_cell):
@@ -926,16 +1300,49 @@ def write_phase_stamped_fluorescent_images(phi_z_matrix, read_from, write_to):
 
             rewrite_lookup[best_fit] = 'Final_Z%03d_T%03d.tif' % (z, phase)
 
+    ref_fluorescent_image_path = os.path.join(
+        read_from, get_fluorescent_filename(setting['fm_index_start_at']))
+
+    dummy_image = tff.imread(ref_fluorescent_image_path)
+    dummy_image = dummy_image * 0
+
     for frame_no, final_name in rewrite_lookup.iteritems():
         src = os.path.join(read_from, get_fluorescent_filename(frame_no))
         dst = os.path.join(write_to, final_name)
         shutil.copy2(src, dst)
+
+    # Writing dummy images for missing frames
+    for missing_frame in missing_info:
+        tff.imsave(os.path.join(write_to, missing_frame), dummy_image)
+
     # a = rewrite_lookup.keys()
     # a.sort()
     # for key in a:
     #     print rewrite_lookup[key]
     pickle_object(rewrite_lookup, 'final_rewrite_lookup')
     pickle_object(missing_info, 'missing_frame')
+
+
+def write_brother_frames(phi_z_matrix, read_from, write_to, brother_frame_locs):
+    # setting['brother_frames']
+    for (phase, z) in brother_frame_locs:
+        curr_cell = phi_z_matrix[phase, z]
+        if len(curr_cell) <= 1:
+            print 'Brother frames at (%d, %d) not possible. Not enough frames' % (phase, z)
+        else:
+            # Name the frames and get frame numbers in decreasing order of
+            # matchval
+            brother_frame_names = ['Brother_frames_Z%03d_T%03d_F%02d.tif' % (
+                z, phase, index) for index in range(len(curr_cell))]
+            # Sort cell frames by match val
+            curr_cell.sort(key=lambda t: t[1].matchval)
+            brother_frame_ids = [frame[0] for frame in curr_cell]
+
+        # Write frames
+        for (frame_no, final_name) in zip(brother_frame_ids, brother_frame_names):
+            src = os.path.join(read_from, get_fluorescent_filename(frame_no))
+            dst = os.path.join(write_to, final_name)
+            shutil.copy2(src, dst)
 
 
 def phase_stamping_step():
@@ -992,6 +1399,63 @@ def phase_stamping_step():
     compile_phase_z_matrix(frame_list, z_stamps, phi_stamps, canon_hb_length)
 
 
+def plot_results(pz_density=None, filtered_pz_density=None, phase_stamps=None, z_stamps=None, diff_matrix=None, diff_matrix_rows=None, canon_hb_stats=None, results='all'):
+    if results in ('all', 'phiz'):
+        plt.figure()
+        plt.imshow(pz_density, cmap='custom_heatmap')
+        plt.colorbar()
+        plt.title('Phi-Z density')
+        plt.figure()
+        plt.imshow(filtered_pz_density, cmap='custom_heatmap')
+        plt.colorbar()
+        plt.title('Filtered Phi-Z density')
+    if results in ('all', 'phase'):
+        plt.figure()
+        plt.plot([i.phase for i in phase_stamps][:1000])
+        plt.title('Phase stamps')
+        plt.figure()
+        plt.plot([i.matchval for i in phase_stamps][:1000])
+        plt.title('Phase matchvals')
+    if results in ('all', 'z'):
+        plt.figure()
+        plt.plot(z_stamps)
+        plt.title('Z stamps')
+    if results in ('all', 'diff'):
+        plt.figure()
+        plt.imshow(diff_matrix)
+        plt.colorbar()
+        plt.title('Diff matrix')
+        plt.figure()
+        plt.plot(
+            diff_matrix[
+                :,
+                diff_matrix_rows if diff_matrix_rows is not None else 1
+            ]
+        )
+        plt.title('Diff matrix rows')
+    if results in ('all', 'canon'):
+        canon_hb_start = canon_hb_stats[0]
+        canon_hb_len = canon_hb_stats[1]
+        canon_diff_mat = diff_matrix[
+            :canon_hb_len * 20, canon_hb_start: canon_hb_start + canon_hb_len: 5]
+
+        offset_stack = np.zeros(canon_diff_mat.shape)
+        offset_preval = np.zeros(canon_diff_mat.shape)
+        for i in range(offset_stack.shape[1]):
+            offset_stack[:, i] = i * 0.1
+            offset_preval[:10, i] = i * 0.1
+
+        plt.figure()
+        plt.plot(canon_diff_mat + offset_stack)
+        plt.title('Canon matrix diff corr-stacked')
+        plt.figure()
+        plt.plot((canon_diff_mat + offset_preval)[:, :11], '-')
+        plt.plot((canon_diff_mat + offset_preval)[:, 11:22], '--')
+        plt.plot((canon_diff_mat + offset_preval)[:, 22:], '-.')
+        plt.title('Canon matrix diff corr-superimposed')
+
+    plt.show()
+
 if __name__ == '__main__':
     import pickle
     from maps.helpers.logging_config import logger_config
@@ -1032,11 +1496,14 @@ if __name__ == '__main__':
     else:
         d = unpickle_object('dwt_array.pkl')
 
-    # cm_hb = compute_heartbeat_length(d[:, :, 2:-2], comparison_plot=True, nperseg=50000)
+    # cm_hb = compute_heartbeat_length(d[:, :, 2:-2], comparison_plot=True,
+    # nperseg=50000)
     cm_hb = 94
 
     # print frames
-    # compute_dwt_matrix(setting['bf_crop_path'], frames[:728], write_to=setting['bf_us_dwt_path'], pkl_file_name='dwt_array_bf_us.pkl', upsample=True)
+    # compute_dwt_matrix(setting['bf_crop_path'], frames[:728],
+    # write_to=setting['bf_us_dwt_path'], pkl_file_name='dwt_array_bf_us.pkl',
+    # upsample=True)
     canonical_hb_start = compute_canonical_heartbeat(
         d[:, :, 2:-2], np.round(cm_hb).astype('int'))
     # #
