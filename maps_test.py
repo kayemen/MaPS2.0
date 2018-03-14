@@ -1,206 +1,341 @@
-import matplotlib.pyplot as plt
+# from __future__ import print_function
 
-from maps.core.z_stamping import load_kymograph,\
-    load_correlation_window_params,\
-    load_frame,\
-    extract_window,\
-    compute_raw_zstage,\
-    compute_zooks,\
-    compute_zstamp,\
-    compute_ideal_zstamp\
+from maps.core.z_stamping_v2 import compute_raw_zstage, compute_zooks,\
+    compute_zookzik_stats, drop_bad_zooks_zstage, compute_zstamp,\
+    compute_deterministic_zstamp, compute_optimal_yz_stamp,\
+    compute_zstamp_curvefit, detect_bad_zooks, shift_frames_and_store_yz,\
+    Zook, Zooks
+# from maps.core.z_stamping import z_stamping_step_yz,
+# shift_frames_and_store_yz
+from maps.core.phase_stamping_v2 import crop_and_compute_dwt_matrix,\
+    compute_dwt_matrix, load_dwt_matrix, interchelate_dwt_array,\
+    compute_heartbeat_length, compute_canonical_heartbeat,\
+    phase_stamp_images, mask_canonical_heartbeat, write_dwt_matrix, \
+    phase_stamp_images_masked, compile_phase_z_matrix, \
+    filter_phi_z_mat, write_brother_frames, fill_phi_z_row, \
+    phi_z_histogram, plot_results, write_pz_density, plot_matrix_rows
 
-# from maps.core.z_stamping import z_stamping_step, shift_frames_and_store
-from maps.settings import read_setting_from_json, setting
-from maps.helpers.misc import pickle_object
-from maps.helpers.img_proccessing import corr2
-from maps.helpers.tiffseriesimport import writetiff
-from maps.helpers.gui_modules import load_image_sequence, max_heartsize_frame, get_rect_params, masking_window_frame
+from maps.core.post_processing import write_phase_stamped_fluorescent_images, \
+    check_fluorescent_bleaching, calculate_fluorescent_image_shift, \
+    shift_and_crop_fluor_images, create_fluorescent_masks, invert_mask_array, \
+    canon_correlation, write_brother_frames, calculate_relative_fluorescent_image_shift, get_fluorescent_filename
 
-import numpy as np
-import logging
-import os
+
+from maps import settings
+from maps.settings import setting, read_setting_from_json, \
+    display_current_settings, JOBS_DIR, display_step
+from maps.helpers.misc import pickle_object, unpickle_object, zook_approval_function, make_or_clear_directory, write_log_data
+from maps.helpers.gui_modules import load_image_sequence, max_heartsize_frame,\
+    get_rect_params, masking_window_frame
+from maps.helpers.logging_config import logger_config
+
 import glob
-import cv2
+import os
 import time
+import logging
+import numpy as np
+import code
+import matplotlib.pyplot as plt
+import sys
+import uuid
+import traceback
+import json
 
-# logging.config.dictConfig(logger_config)
-logger = logging.getLogger('MaPS')
+SAVE_WORKSPACE = '-s' in sys.argv
 
-# Path to settings json for preloading settings
-settings_json = 'D:\\Scripts\\MaPS\\MaPS scripts\\maps\\current_inputs.json'
+logging.config.dictConfig(logger_config)
 
-# Initialize the settings object
-read_setting_from_json(settings_json)
+job_list = next(os.walk(settings.JOBS_DIR))[1]
 
-# Number of zooks to skip from the start#
-setting['ignore_zooks_at_start'] = 1
-# Number of frames to ignore at the start of every zook
-setting['ignore_startzook'] = 7
-# Number of frames to ignore at the end of every zook
-setting['ignore_endzook'] = 3
-# Physical resolution of brightfield images in um
-setting['BF_resolution'] = 0.6296
-# Prefix of image file names
-setting['image_prefix'] = 'Phase_Bidi1_'
-# Location of raw data dump. This includes pickled objects, csv files and plots
-setting['workspace'] = 'D:\\Scripts\\MaPS\\Data sets\\Raw data\\'
-# Upsampling factor while finding optimal z stamp
-setting['resampling_factor'] = 5
-# Horizontal width of window within which best correlation is to be found (in
-# low res domain)
-setting['slide_limit'] = 5
-# Number of frames in a single zook
-setting['ZookZikPeriod'] = 192
-# First index in the filename of images
-setting['index_start_at'] = 1
-# Number of image digits to be used in the file name
-setting['num_digits'] = 5
-# Location of first minima in the kymograph
-setting['first_minima'] = 0
+job_choice = 0
 
-# Path to single kymograph image. Kymograph needs to be binarized
-kymograph_path = 'D:\Scripts\MaPS\Data sets\Kymographs\KM-XZ_0.tif'
+try:
+    job_choice = int(sys.argv[1])
+except:
+    print '\n'.join(
+        map(
+            lambda x, y: '%d-%s' % (x, y),
+            range(1, len(job_list) + 1),
+            job_list
+        )
+    )
 
-# Number of frames to process
-frame_count = 400
+    while job_choice not in range(1, len(job_list) + 1):
+        job_choice = int(raw_input('Select job:'))
+curr_job = job_list[job_choice - 1]
+read_setting_from_json(curr_job, save_bkups=SAVE_WORKSPACE)
 
-# Folder containing brightfield images for phase stamping. The images must be
-# named sequentially
-phase_image_folder = 'D:\\Scripts\\MaPS\\Data sets\\Phase_Bidi\\'
+try:
+    run_name = sys.argv[2]
+except:
+    run_name = time.strftime('%d%b%y_%H%M')
 
-frame_no = 21
+try:
+    execfile(os.path.join(JOBS_DIR, curr_job, 'local_settings.py'))
+except:
+    print '''Local setting override python file not found.
+    Please create a local_settings.py file in the job directory.
+    Using default config parameters'''
+    Y_STAGE_CORRECTION = True
+    WRITE_IMAGES_TO_DISK = True
+    USE_PICKLED_ZSTAMPS = False
+    USE_PICKLED_ZSTAMPS_STAT = False
+    USE_PICKLED_PHASESTAMPS = False
+    USE_PICKLED_DWT = False
+    USE_PICKLED_CMHB = False
+    USE_PICKLED_SAD = False
+    USE_PICKLED_CANON_DWT = False
+    USE_PICKLED_PHI_Z_MATRIX = False
+    WRITE_DWT = True
+    WRITE_FINAL_IMAGES = True
 
-img_path = glob.glob(
-    os.path.join(phase_image_folder, '*.tif')
-)
+try:
 
-# Uses GUI to select rectangular window in specified frame.
-# Click and drag with mouse tto select region. Clos window to finalize
-img_seq = load_image_sequence([img_path[frame_no]])
-# max_heartsize_frame(img_seq[0])
-#
-# params = get_rect_params()
-#
-# x_end = params['x_end']
-# height = params['height']
-# y_end = params['y_end']
-# width = params['width']
-#
-# data = [
-#     ('frame', frame_no),
-#     ('x_end', x_end),
-#     ('height', height),
-#     ('y_end', y_end),
-#     ('width', width),
-# ]
-#
-# print 'Using reference window as-'
-# print '\n'.join(['%s:%d' % (i[0], i[1]) for i in data])
-#
-# pickle_object(data, file_name='corr_window.csv', dumptype='csv')
+    import numpy as np
 
-# z_stamp_opt, z_stamp_cf, res, bad_zooks, minp = z_stamping_step(
-#     kymo_path=kymograph_path,
-#     frame_count=frame_count,
-#     phase_img_path=phase_image_folder,
-#     use_old=use_existing_datadump_vals,
-#     datafile_name='z_stamp_opt_KM-XZ_0.pkl'
-# )
+    from scipy.signal import convolve2d as conv2d
+    from skimage import restoration
+    from skimage.transform import rescale
+    from skimage.external import tifffile as tff
 
-kymo_data = load_kymograph(kymograph_path)
-# Load window parameters
-x_start, x_end, y_start, y_end, height, width, ref_frame_no = load_correlation_window_params('corr_window.csv')
+    from astropy.convolution.kernels import AiryDisk2DKernel, Gaussian2DKernel, Tophat2DKernel
 
-z_stage_data = compute_raw_zstage(kymo_data[:frame_count, :])
+    from maps.helpers.deconv_methods import richardson_lucy, damped_richardson_lucy
 
-(maxp, maxv, minp, minv) = compute_zooks(z_stage_data)
+    import matplotlib.pyplot as plt
 
-# compute_zookzik_stats(maxp, minp)
-z_stamp, _ = compute_zstamp(z_stage_data, maxp, minp, frame_no)
-z_stamp_det = compute_ideal_zstamp(z_stage_data, maxp, minp, frame_no)
+    import time
+    import glob
+    import os
+    import shutil
 
-# Starting correlation computation
-x_end_resized = x_end * setting['resampling_factor']
-height_resized = height * setting['resampling_factor']
-x_start_resized = x_end_resized - height_resized
-# y_start_resized = y_start * setting['resampling_factor']
-y_end_resized = y_end * setting['resampling_factor']
-width_resized = width * setting['resampling_factor']
-y_start_resized = y_end_resized - width_resized
+    deconv_method = richardson_lucy
 
-ref_frame = load_frame(phase_image_folder, frame_no)
+    def read_image(img_path):
+        im = tff.imread(img_path)
+        # im = im.astype('float64') + 1e-6
+        # im /= im.max()
+        return im
 
-ref_frame_window = extract_window(ref_frame, x_start_resized, x_end_resized, y_start_resized, y_end_resized)
+    def normalize_image(img):
+        ret_img = img.astype('float64')
+        ret_img = (ret_img - np.min(ret_img))/(np.max(ret_img)-np.min(ret_img))
+        return ret_img
 
-cv2_methods = ['cv2.TM_CCORR_NORMED', 'cv2.TM_CCOEFF_NORMED', 'cv2.TM_SQDIFF_NORMED']
+    def compute_error(recons_image, orig_image):
+        mse = np.sum((recons_image - orig_image)**2)**0.5
+        sad = np.sum(np.abs(recons_image - orig_image))
 
-slide_limit_resized = setting['slide_limit'] * setting['resampling_factor']
+        print('MSE:', mse)
+        print('SAD:', sad)
 
-optimal_shifts_x = np.asarray([])
-optimal_shifts_y = np.asarray([])
+        return mse, sad
 
-for frame in np.arange(0, frame_count):
-    y_end_resized_frame = y_end_resized + z_stamp_det[frame]
-    y_start_resized_frame = y_end_resized_frame - width_resized
 
-    curr_frame = load_frame(phase_image_folder, frame)
+    method = 'rich-lucy'
 
-    tic = time.time()
+    # Setting deconvolution method
+    if method == 'rich-lucy':
+        deconv_method = richardson_lucy
+        deconv_params = {
+            'iterations': 50
+        }
+    elif method == 'damp-rich-lucy':
+        deconv_method = damped_richardson_lucy
+        deconv_params = {
+            'iterations': 100,
+            'N': 3,
+            # 'T': 0.8,
+            'multiplier': 1
+        }
 
-    # OpenCV method
-    curr_frame_window = curr_frame[x_start_resized - 75:x_end_resized + 75, y_start_resized_frame - slide_limit_resized: y_end_resized_frame + slide_limit_resized]
-    #
-    # # plt.figure(111)
-    # # plt.imshow(curr_frame_window, cmap=plt.cm.gray)
-    # # plt.figure(112)
-    # # plt.imshow(ref_frame_window, cmap=plt.cm.gray)
-    # # plt.show()
-    #
-    corr_coeffs_alt = cv2.matchTemplate(curr_frame_window.astype('float32'), ref_frame_window.astype('float32'), eval(cv2_methods[1]))
+    # Generating psf
+    kernel_size = 31
+    psf = {}
+    psf_param = {}
 
-    print 'Time taken(opencv)-', time.time() - tic
+    box_size = 7
+    box_psf = np.zeros((kernel_size, kernel_size)) / box_size**2
+    box_psf[int((kernel_size-box_size)/2):-int((kernel_size-box_size)/2),
+            int((kernel_size-box_size)/2):-int((kernel_size-box_size)/2)] = 1
+    psf['box'] = box_psf
+    psf_param['box'] = box_size
 
-    tic = time.time()
-    # corr2 method
-    corr_coeffs = np.zeros((150, 50))
-    for xslide in np.arange(-75, 75):
-        x_end_resized_shift = x_end_resized + xslide
-        x_start_resized_shift = x_end_resized_shift - height_resized
 
-        for yslide in np.arange(-25, 25):
-            y_end_resized_shift = y_end_resized_frame + yslide
-            y_start_resized_shift = y_end_resized_shift - width_resized
+    std_dev = kernel_size // 8
+    gauss_psf = Gaussian2DKernel(std_dev, x_size=kernel_size,
+                                y_size=kernel_size).array
+    psf['gauss'] = gauss_psf
+    psf_param['gauss'] = std_dev
 
-            curr_frame_window = extract_window(curr_frame, x_start_resized_shift, x_end_resized_shift, y_start_resized_shift, y_end_resized_shift)
+    tophat_radius = 6
+    tophat_psf = Tophat2DKernel(tophat_radius, x_size=kernel_size,
+                                y_size=kernel_size).array
+    psf['tophat'] = tophat_psf
+    psf_param['tophat'] = tophat_radius
 
-            corr_coeffs[xslide + 75, yslide + 25] = corr2(ref_frame_window, curr_frame_window)
+    radius = kernel_size // 4
+    airy_psf = AiryDisk2DKernel(radius, x_size=kernel_size,
+                                y_size=kernel_size).array
+    psf['airy'] = airy_psf
+    psf_param['airy'] = radius
 
-    print 'Time taken(corr2)-', time.time() - tic
+    psf_name = 'tophat'
+    interpolation_psf = psf[psf_name]
+    # interpolation_psf = gauss_psf
 
-    # print corr_coeffs
-    print np.argmax(corr_coeffs_alt - corr_coeffs)
-    print np.max(corr_coeffs_alt - corr_coeffs)
 
-    plt.imshow(np.absolute(corr_coeffs-corr_coeffs_alt)/np.max(corr_coeffs-corr_coeffs_alt), cmap=plt.cm.gray)
+    # plt.subplot(221)
+    # plt.imshow(box_psf, cmap='jet')
+    # plt.subplot(222)
+    # plt.imshow(gauss_psf, cmap='jet')
+    # plt.subplot(223)
+    # plt.imshow(airy_psf, cmap='jet')
+    # plt.subplot(235)
+    # plt.imshow(interpolation_psf, cmap='gray')
+    # plt.title('PSF')
+    # plt.show()
+
+
+    resampling_factor = 4
+
+    # psf_path = os.path.join(
+    #     image_path, set_name + '_interpolation_results_%d_%d_' % (kernel_size, resampling_factor))
+
+    # result_path = os.path.join(psf_path, method)
+
+    # make_or_clear_directory(result_path, clear=True)
+
+    img_list = glob.glob(os.path.join(setting['final_images'], '*.tif'))
+
+    img_index = 140
+
+    # for j in range(10):
+    #     mse_grad = np.zeros(10)
+    #     sad_grad = np.zeros(10)
+
+    #     for i in range(10):
+    #         im1 = read_image(img_list[img_index+j])
+    #         im2 = read_image(img_list[img_index+i])
+    #         print im1.shape
+    #         print im2.shape
+    #         mse_grad[i], sad_grad[i] = compute_error(
+    #             normalize_image(im1),
+    #             normalize_image(im2)
+    #         )
+    #     mse_grad[np.where(mse_grad>25)] = np.nan
+
+    #     plt.figure(1)
+    #     plt.plot(mse_grad)
+    #     plt.figure(2)
+    #     plt.plot(sad_grad)
+    
+    # plt.figure(1)
+    # plt.title('MSE')
+    # plt.figure(2)
+    # plt.title('SAD')
+    # plt.show()
+    
+    print 'loading ', img_list[img_index]
+    print 'loading ', img_list[img_index + 1]
+    print 'loading ', img_list[img_index + 2]
+    pre_image = read_image(img_list[img_index]).astype('float64')
+    post_image = read_image(img_list[img_index + 2]).astype('float64')
+
+    pre_image = normalize_image(pre_image)
+    post_image = normalize_image(post_image)
+    # pre_image = tff.imread(img_list[img_index]).astype('float64')
+    # post_image = tff.imread(img_list[img_index + 2]).astype('float64')
+
+    missing_image = read_image(img_list[img_index + 1]).astype('float64')
+    missing_image = normalize_image(missing_image)
+    # missing_image = tff.imread(img_list[img_index + 1]).astype('float64')
+
+    us_pre_image = rescale(pre_image, resampling_factor, order=5)
+    us_post_image = rescale(post_image, resampling_factor, order=5)
+    # us_pre_image = pre_image.repeat(
+    #     resampling_factor, axis=0).repeat(resampling_factor, axis=1)
+    # us_post_image = pre_image.repeat(
+    #     resampling_factor, axis=0).repeat(resampling_factor, axis=1)
+
+    interpolated_image = (us_pre_image + us_post_image) / 2.
+
+    ds_interpolated_image = normalize_image( rescale(
+        interpolated_image, 1.0/resampling_factor, order=5))
+
+    diff_image = ds_interpolated_image - missing_image
+
+    mse1, sad1 = compute_error(ds_interpolated_image, missing_image)
+
+    recons_image, final_psf = deconv_method(
+        interpolated_image, interpolation_psf, **deconv_params)
+
+    ds_recons_image = normalize_image(rescale(recons_image, 1.0/resampling_factor, order=5))
+    # ds_recons_image = recons_image[
+    #     :: resampling_factor, :: resampling_factor
+    # ]
+
+    # recons_missing_frame = deconv_method(missing_image, airy_psf, **deconv_params)
+
+    diff_image2 = ds_recons_image - missing_image
+
+    mse2, sad2 = compute_error(ds_recons_image, missing_image)
+
+    with open('test_results.txt', 'a') as f:
+        f.write('\n')
+        f.write(
+            'PSF:%s,\nResampling:%d,\ndeconv_method:%s,\ndeconv_params:%s\ndeconv_iters:%d' % (
+                psf_name, resampling_factor, method, psf_param[psf_name], deconv_params['iterations']
+            )
+        )
+        f.write('\n')
+        f.write(
+            'Average - MSE:%.2f,SAD:%.2f\nDeconv - MSE:%.2f,SAD:%.2f' % (
+                mse1, sad1, mse2, sad2
+                )
+            )
+        f.write('\n')
+        f.write('-------------------------------------')
+
+    plt.figure()
+    plt.subplot(331)
+    plt.title('Frame n')
+    plt.imshow(us_pre_image, cmap='gray')
+    plt.subplot(332)
+    plt.title('Frame n+2')
+    plt.imshow(us_post_image, cmap='gray')
+    plt.subplot(333)
+    plt.title('Original missing frame')
+    plt.imshow(missing_image, cmap='gray')
+    plt.subplot(334)
+    plt.title('Average of frames')
+    plt.imshow(interpolated_image, cmap='gray')
+    plt.subplot(335)
+    plt.imshow(recons_image, cmap='gray')
+    plt.title('Deconvolved image')
+    plt.subplot(336)
+    plt.imshow(interpolation_psf, cmap='gray')
+    plt.title('Interpolation PSF')
+    plt.subplot(337)
+    plt.imshow(diff_image, cmap='gray')
+    plt.title('Difference - Mean interpolation')
+    plt.subplot(338)
+    plt.imshow(diff_image2, cmap='gray')
+    plt.title('Difference - Deconvolution')
+    plt.subplot(339)
+    plt.axis('off')
+    plt.text(0, 0, 'Average:\nMSE:%.2f\nSAD:%.2f\nDeconv:\nMSE:%.2f\nSAD:%.2f' % (mse1, sad1, mse2, sad2))
+
+    plt.tight_layout(
+        # pad=0.4, w_pad=0.5, h_pad=1.0
+        )
     plt.show()
-    # plt.savefig(
-    #     os.path.join(
-    #         setting['workspace'],
-    #         'convex_check\\frame%d.tif' % (frame)
-    #     ),
-    #     bbox_inches='tight'
-    # )
-    # plt.gcf().clear()
 
-    optimal_shifts_x = np.append(optimal_shifts_x, corr_coeffs_alt.max(axis=1).argmax()-75)
-    optimal_shifts_y = np.append(optimal_shifts_y, corr_coeffs_alt.max(axis=0).argmax()-25)
-    # print 'Similarity-', corr2(corr_coeffs, corr_coeffs_alt)
-    #
-    # writetiff((corr_coeffs*65535).astype('uint16'), os.path.join(setting['workspace'], 'convex_check_corr2'), frame)
-    # writetiff((corr_coeffs_alt*65535).astype('uint16'), os.path.join(setting['workspace'], 'convex_check_opencv'), frame)
-    # writetiff((np.power(corr_coeffs_alt, 25)*65535).astype('uint16'), os.path.join(setting['workspace'], 'convex_check_opencv_gamma'), frame)
+    # code.interact(local=locals())
 
 
-plt.plot(optimal_shifts_x, 'b')
-plt.plot(optimal_shifts_y, 'g')
-plt.show()
+except:
+    import traceback
+    traceback.print_exc()
+    import code
+    code.interact(local=locals())

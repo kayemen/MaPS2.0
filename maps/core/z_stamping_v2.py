@@ -52,6 +52,7 @@ class Zook:
         self.is_bad_zstage = False
         self.is_bad_convexity = False
         self.is_bad_shift = False
+        self.is_bad_length = False
         self.generic_error = False
         self.override = False
         self.is_trimmed = False
@@ -133,11 +134,12 @@ class Zooks:
                 framelist += zook.get_framelist()
         return framelist
 
-    def get_dwt_framelist(self, upsample=False):
+    def get_dwt_framelist(self, upsample=False, offset=None):
+        # TODO!!!!!
         start = 0
         for zook in self:
-            zook.dwt_computed = True
             yield slice(start, start + len(zook))
+            zook.dwt_computed = True
             zook.dwt_start = start
             start += len(zook)
             zook.dwt_end = start - 1
@@ -153,7 +155,7 @@ class Zooks:
 
     def update_badzooks(self):
         for zook in self.zook_list:
-            zook.is_bad = (zook.is_bad_zstage or zook.is_bad_convexity or zook.is_bad_shift or zook.generic_error) and (
+            zook.is_bad = (zook.is_bad_zstage or zook.is_bad_convexity or zook.is_bad_shift or zook.generic_error or zook.is_bad_length) and (
                 not zook.override)
 
     def override_bad_zooks(self, zooklist):
@@ -287,7 +289,7 @@ def compute_zookzik_stats(zooks):
     zz_stats['lengths'] = [len(zook) for zook in zooks]
     zz_stats['mean'] = np.round(np.mean(zz_stats['lengths']))
     zz_stats['mode'] = np.round(
-        stats.mode(zz_stats['lengths']))
+        stats.mode(zz_stats['lengths']))[0][0]
     zz_stats['max'] = np.max(zz_stats['lengths'])
 
     logger.debug('\n'.join(['%s: %s' % (key, str(val))
@@ -301,19 +303,22 @@ def compute_zookzik_stats(zooks):
 def drop_bad_zooks_zstage(zooks, zz_stats, z_stage, threshold=0.9, threshold_mult=3):
     # Find bad zooks after zstage calculation to drop bad zooks
     for zook in zooks:
-        if len(zook) < zz_stats['mean'] * threshold:
-            zook.is_bad_zstage = True
+        # if len(zook) < zz_stats['mean'] * threshold:
+        #     zook.is_bad_zstage = True
 
-        slope = (z_stage[zook.end] - z_stage[zook.start]) / len(zook)
+        if len(zook) != setting['ZookZikPeriod']:
+            zook.is_bad_length = True
 
-        shifts = z_stage[zook.start + 1: zook.end] - \
-            z_stage[zook.start: zook.end - 1]
+        # slope = (z_stage[zook.end] - z_stage[zook.start]) / len(zook)
 
-        if bool(len(np.where(shifts > threshold_mult * int(slope + 1))[0])):
-            # print zook.id, 'is a bad zook'
-            # plt.plot(shifts)
-            # plt.show()
-            zook.is_bad_zstage = True
+        # shifts = z_stage[zook.start + 1: zook.end] - \
+        #     z_stage[zook.start: zook.end - 1]
+
+        # if bool(len(np.where(shifts > threshold_mult * int(slope + 1))[0])):
+        #     # print zook.id, 'is a bad zook'
+        #     # plt.plot(shifts)
+        #     # plt.show()
+        #     zook.is_bad_zstage = True
 
     zooks.update_badzooks()
 
@@ -507,14 +512,14 @@ def calculate_frame_optimal_shift_yz(img_path, prefix, frame_no, offset, ref_fra
         corr_array = cv2.matchTemplate(frame_window.astype(
             'float32'), ref_frame_window.astype('float32'), cv2_methods['ccorr_norm'])
 
-        # if PLOT:
-        #     plt.figure()
-        #     plt.imshow(corr_array, cmap='gray')
-        #     plt.colorbar()
-        #     # plt.figure()
-        #     # plt.plot(corr_array.max(axis=0))
-        #     # plt.plot(corr_array.max(axis=1))
-        #     plt.show(block=False)
+        if PLOT:
+            plt.figure()
+            plt.imshow(corr_array, cmap='gray')
+            plt.colorbar()
+            plt.figure()
+            plt.plot(corr_array.max(axis=0))
+            plt.plot(corr_array.max(axis=1))
+            plt.show(block=False)
         #     print 'plotted'
 
         # Check convexity
@@ -539,39 +544,39 @@ def calculate_frame_optimal_shift_yz(img_path, prefix, frame_no, offset, ref_fra
             z_stamp_optimal[frame_no] = z_stamp_det[frame_no] + y_shift
             y_stamp_optimal[frame_no] = x_shift
 
-            if setting['write_ref_window']:
-                write_window = extract_window(
-                    frame_window,
-                    x_shift + slide_limit_x_resized,
-                    x_shift + slide_limit_x_resized + height,
-                    y_shift + slide_limit_resized,
-                    y_shift + slide_limit_resized + width
-                )
-                write_window = resize(
-                    write_window,
-                    (
-                        write_window.shape[0] / setting['resampling_factor'],
-                        write_window.shape[1] / setting['resampling_factor']
-                    ),
-                    preserve_range=True
-                ).astype('uint16')
+            # if setting['write_ref_window']:
+            #     write_window = extract_window(
+            #         frame_window,
+            #         x_shift + slide_limit_x_resized,
+            #         x_shift + slide_limit_x_resized + height,
+            #         y_shift + slide_limit_resized,
+            #         y_shift + slide_limit_resized + width
+            #     )
+            #     write_window = resize(
+            #         write_window,
+            #         (
+            #             write_window.shape[0] / setting['resampling_factor'],
+            #             write_window.shape[1] / setting['resampling_factor']
+            #         ),
+            #         preserve_range=True
+            #     ).astype('uint16')
 
-                writetiff(write_window, setting[
-                          'cropped_ref_windows'], frame_no)
+            #     writetiff(write_window, setting[
+            #               'cropped_ref_windows'], frame_no)
 
-                if PLOT:
-                    plt.figure()
-                    plt.imshow(create_image_overlay(
-                        frame_window.astype('uint16'), overlay_type='rectangle',
-                        overlay_data={
-                            'pt1': (int(y_shift + slide_limit_resized), int(x_shift + slide_limit_x_resized), ),
-                            'pt2': (int(y_shift + slide_limit_resized + width), int(x_shift + slide_limit_x_resized + height), ),
-                            'color': (0, 65535, 0),
-                            'thickness': 10
-                        }
-                    ))
-                    plt.show(block=True)
-                    print 'plotted'
+            #     if PLOT:
+            #         plt.figure()
+            #         plt.imshow(create_image_overlay(
+            #             frame_window.astype('uint16'), overlay_type='rectangle',
+            #             overlay_data={
+            #                 'pt1': (int(y_shift + slide_limit_resized), int(x_shift + slide_limit_x_resized), ),
+            #                 'pt2': (int(y_shift + slide_limit_resized + width), int(x_shift + slide_limit_x_resized + height), ),
+            #                 'color': (0, 65535, 0),
+            #                 'thickness': 10
+            #             }
+            #         ))
+            #         plt.show(block=True)
+            #         print 'plotted'
 
         except:
             traceback.print_exc()

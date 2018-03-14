@@ -11,7 +11,7 @@ import skimage.external.tifffile as tff
 import pywt
 
 from maps.helpers.tiffseriesimport import importtiff, writetiff
-from maps.helpers.img_proccessing import corr2, ssim2
+from maps.helpers.img_proccessing import corr2, ssim2, corr2_masked
 from maps.helpers.misc import pickle_object,\
     unpickle_object
 from maps.settings import setting, read_setting_from_json, THREADED
@@ -495,6 +495,7 @@ def interchelate_dwt_array(dwt_array, zooks=None, write_to=None, pkl_file_name=N
                  upsample_dwt_array(dwt_array[:, :, zook_lim]))
             )
             # print us_dwt_array.shape
+        pickle_object(zooks, 'zooks')
     else:
         us_dwt_array = upsample_dwt_array(dwt_array)
 
@@ -533,20 +534,20 @@ def interchelate_dwt_array(dwt_array, zooks=None, write_to=None, pkl_file_name=N
     return us_dwt_array
 
 
-def compute_peak_harmonic(first_image, second_image, method, corr_array):
+def compute_peak_harmonic(first_image, second_image, method, corr_array, frame):
     # Corr2 method
     if method == 'corr':
-        corr_array.append(corr2(first_image, second_image))
+        corr_array[frame] = (corr2(first_image, second_image))
     # SSIM
     elif method == 'ssim':
-        corr_array.append(ssim2(first_image, second_image))
+        corr_array[frame] = (ssim2(first_image, second_image))
     # Abs Diff
     # TODO: Will require filtering
     elif method == 'sad':
-        corr_array.append(np.sum(np.absolute(first_image - second_image)))
+        corr_array[frame] = (np.sum(np.absolute(first_image - second_image)))
     # OpenCV methods ccorr, ccoeff
     elif method in ('ccoeff_norm', 'ccorr_norm', 'mse_norm'):
-        corr_array.append(cv2.matchTemplate(
+        corr_array[frame] = (cv2.matchTemplate(
             second_image.astype('float32'),
             first_image.astype('float32'), cv2_methods[method])[0][0]
         )
@@ -562,11 +563,11 @@ def compute_heartbeat_length(dwt_array, method='ccoeff_norm', comparison_plot=Tr
 
     spectra_raw = []
     # TODO
-    for ref_frame in range(dwt_array.shape[2] // 2)[:500]:
-        print 'Processing frame:', ref_frame
+    for ref_frame in range(dwt_array.shape[2] // 2)[:300]:
+        logging.info('Processing frame:%d' % ref_frame)
         first_image = dwt_array[:, :, ref_frame]
         tic = time.time()
-        x = []
+        x = np.zeros(dwt_array.shape[2])
         # for i in range(dwt_array.shape[2]):
         #     second_image = dwt_array[:, :, i]
         if not settings.MULTIPROCESSING:
@@ -575,7 +576,8 @@ def compute_heartbeat_length(dwt_array, method='ccoeff_norm', comparison_plot=Tr
                     first_image,
                     dwt_array[:, :, frame],
                     method,
-                    x
+                    x,
+                    frame
                 ),
                 range(dwt_array.shape[2])
             )
@@ -586,7 +588,8 @@ def compute_heartbeat_length(dwt_array, method='ccoeff_norm', comparison_plot=Tr
                     first_image,
                     dwt_array[:, :, frame],
                     method,
-                    x
+                    x,
+                    frame
                 ),
                 range(dwt_array.shape[2]),
                 settings.NUM_CHUNKS
@@ -595,8 +598,8 @@ def compute_heartbeat_length(dwt_array, method='ccoeff_norm', comparison_plot=Tr
             try:
                 temp_var.get(timeout=settings.TIMEOUT)
             except TimeoutError:
-                logging.info('Zook %d timed out in %d seconds' %
-                             (zook.id, settings.TIMEOUT))
+                logging.info('Frame %d timed out in %d seconds' %
+                             (ref_frame, settings.TIMEOUT))
 
             del proc_pool
 
@@ -618,7 +621,7 @@ def compute_heartbeat_length(dwt_array, method='ccoeff_norm', comparison_plot=Tr
 
     pickle_object(cm_hb[0], 'common_heatbeat_period.pkl')
     pickle_object(time_taken, 'common_heatbeat_calctime.pkl')
-    pickle_object(spectra_raw[:400], 'raw_spectra.pkl')
+    pickle_object(spectra_raw, 'raw_spectra.pkl')
 
     return cm_hb[0]
 
@@ -801,14 +804,20 @@ def compute_canonical_heartbeat(dwt_array, zooks, mean_hb_period, diff_method='s
 
     # print mean_hb_period
     # TODO: To be optimized
-    for zook in range(setting['canonical_zook_count'] - 2):
+    for zook in range(setting['canonical_zook_count']-2):
+        # for zook in range(setting['canonical_zook_count'] - 2):
         # print range(int(start_frame) + (num_contiguous_frames // 4),
         # int(start_frame + num_contiguous_frames - mean_hb_period) -
         # (num_contiguous_frames // 4))
-        for frame in range(int(start_frame), int(start_frame + num_contiguous_frames - mean_hb_period)):
-            # for frame in range(int(start_frame) + (num_contiguous_frames //
-            # 4), int(start_frame + num_contiguous_frames - mean_hb_period) -
-            # (num_contiguous_frames // 4)):
+        if setting['central_zook_canon']:
+            ignore_region = (num_contiguous_frames // 4)
+            frame_range = range(int(start_frame) + ignore_region, int(
+                start_frame + num_contiguous_frames - mean_hb_period) - ignore_region)
+        else:
+            frame_range = range(int(start_frame), int(
+                start_frame + num_contiguous_frames - mean_hb_period))
+
+        for frame in frame_range:
             matching_frames = diff_matrix[frame: frame + mean_hb_period, :]
 
             if canon_method in ('count', 'combo'):
@@ -858,6 +867,9 @@ def compute_canonical_heartbeat(dwt_array, zooks, mean_hb_period, diff_method='s
     else:
         canon_start = np.argmax(
             mean2std_clustered_match + mean2std_clustered_match_new)
+
+    # if setting['central_zook_canon']:
+    #     canon_start +=
 
     # if diff_method == 'sad':
     #     print 'Using argmax'
@@ -1087,8 +1099,11 @@ def mask_canonical_heartbeat(canonical_hb_dwt, num_masks=10, mask_pkl_file_name=
 
 def phase_stamp_image_masked(curr_frame, canonical_hb_dwt, masks_array, method='corr', temp=0):
     # print temp
+    USE_CV_MASK = False
+
     tic = time.time()
     diff_array = np.zeros(len(canonical_hb_dwt))
+    # diff_array = np.zeros(canonical_hb_dwt.shape[2])
 
     if method == 'sad':
         for phase in range(len(canonical_hb_dwt)):
@@ -1100,40 +1115,57 @@ def phase_stamp_image_masked(curr_frame, canonical_hb_dwt, masks_array, method='
 
     elif method == 'corr':
         for phase in range(len(canonical_hb_dwt)):
+            # for phase in range(canonical_hb_dwt.shape[2]):
             canon_frame = canonical_hb_dwt[phase]
-            masked_frame = apply_mask(curr_frame, masks_array[:, :, phase])
-
-            # if masked_frame.shape != canon_frame.shape:
-            #     print 'dimension mismatch'
-            #     code.interact(local=locals())
-            # print (masked_frame.shape, canon_frame.shape)
+            # canon_frame = canonical_hb_dwt[phase]
+            # masked_frame = apply_mask(curr_frame, masks_array[:, :, phase])
+            # code.interact(local=locals())
             try:
                 diff_array[phase] = 1 - cv2.matchTemplate(
-                    masked_frame.astype('float32'),
+                    curr_frame.astype('float32'),
                     canon_frame.astype('float32'),
-                    cv2_methods['ccoeff_norm']
+                    cv2_methods['ccorr_norm'],
+                    mask=masks_array[:, :, phase].astype('float32')
                 )[0][0]
+
+                # diff_array[phase] = 1 - cv2.matchTemplate(
+                #     curr_frame.astype('float32'),
+                #     canon_frame.astype('float32'),
+                #     cv2_methods['ccoeff_norm'],
+                #     # mask=masks_array[:, :, phase].astype('float32')
+                # )[0][0]
+
+                # diff_array[phase] = 1 - corr2_masked(curr_frame.astype('float32'), canon_frame.astype('float32'), masks_array[:, :, phase].astype('float32'))
+
             except:
-                print canon_frame.shape
-                print masked_frame.shape
-                # traceback.print_exc()
+                traceback.print_exc()
                 print 'error in', phase
                 diff_array[phase] = 1
+    # elif method == 'corr_mult_mask':
+    #     for phase in range(canonical_hb_dwt.shape[2]):
+    #         canon_frame = canonical_hb_dwt[phase]
+    #         masked_frame = apply_mask(curr_frame, masks_array[:, :, phase])
 
-            # plt.imshow(apply_unmask(masked_frame, masks_array[:, :, phase]))
-            # plt.title('%d' % phase)
-            # plt.show()
-
-        # plt.plot(diff_array)
-        # plt.show()
+    #         try:
+    #             diff_array[phase] = 1 - cv2.matchTemplate(
+    #                 masked_frame.astype('float32'),
+    #                 canon_frame.astype('float32'),
+    #                 cv2_methods['ccoeff_norm']
+    #             )[0][0]
+    #         except:
+    #             traceback.print_exc()
+    #             print 'error in', phase
+    #             diff_array[phase] = 1
 
     else:
         raise NotImplementedError(
             'Method %s not implemented for phase stamping' % method)
 
+    # plt.plot(diff_array)
+    # plt.show()
+
     best_phase = np.argmin(diff_array)
-    # print 'Diff:', diff_array[best_phase]
-    # print temp, 'done -', time.time() - tic
+    # print best_phase
 
     return PhaseStamp(
         phase=best_phase,
@@ -1147,9 +1179,10 @@ def phase_stamp_image_masked(curr_frame, canonical_hb_dwt, masks_array, method='
 
 def phase_stamp_images_masked(dwt_array, canonical_hb_dwt, masks_array, method='corr'):
     tic = time.time()
-    if not settings.MULTIPROCESSING:
+
+    if not settings.MULTIPROCESSING or True:
         # print dwt_array.shape[2]
-        phase_stamps = map(
+        results = map(
             lambda frame: phase_stamp_image_masked(
                 dwt_array[:, :, frame],
                 canonical_hb_dwt,
@@ -1176,16 +1209,23 @@ def phase_stamp_images_masked(dwt_array, canonical_hb_dwt, masks_array, method='
         print 'Spawned all processes'
 
         try:
-            phase_stamps = temp_var.get(timeout=settings.TIMEOUT * 50)
+            results = temp_var.get(timeout=settings.TIMEOUT * 50)
         except TimeoutError:
             logging.info('Phase stamping Timed out in %d seconds' %
                          (settings.TIMEOUT * 50))
 
+    phase_stamps = results
+    # phase_stamps = [r[0] for r in results]
+    # correlation_matrix = np.dstack([r[1].transpose() for r in results])
+    # correlation_matrix = correlation_matrix.reshape(np.prod(correlation_matrix.shape[:2]), -1)
+
     print 'Completed phase stamping in', time.time() - tic
 
     pickle_object(phase_stamps, 'masked_phase_stamps')
+    # pickle_object(correlation_matrix, 'masked_correlation_matrixi')
 
     return phase_stamps
+    # return phase_stamps, correlation_matrix
 
 
 def get_row(pz_row, rank=1):
@@ -1225,42 +1265,127 @@ def correct_phase_stamp_matchvals(phase_stamps):
     return corrected_phase_stamps
 
 
+def compute_phi_z_density(pz_mat):
+    pz_density = np.zeros(pz_mat.shape)
+
+    for row in pz_density.shape[0]:
+        for col in pz_density.shape[1]:
+            pz_density[i, j] = len(pz_mat[i, j])
+
+    return pz_density
+
+
 # TODO: COMMENT
-def filter_phi_z_mat(pz_mat):
+def filter_phi_z_mat(pz_mat, phase_stamps, z_stamps, percentile=50, percentile_filt=False, pkl_name='negative_phase_stamps'):
     pz_mat_density = np.zeros(pz_mat.shape)
 
-    for phi in range(pz_mat.shape[0]):
-        pz_row_matchvals = reduce(
-            lambda x, y: x + y, map(lambda cell: [i[1] for i in cell], pz_mat[phi, :]))
-        pz_median = np.median(np.asarray(pz_row_matchvals))
-        for ind, cell in enumerate(pz_mat[phi, :]):
-            cell = [i for i in cell if i[1] < pz_median]
-            pz_mat_density[phi, ind] = len(cell)
-        # for cell in pz_row:
-        #     cell = sorted(cell, key=lambda x: x[1])
+    '''
+    Remove negative slope from phase stamps. Set the values to have high differences
+    '''
+    diff_vals = np.asarray([frame.matchval for frame in phase_stamps])
+    diff_diff = diff_vals[1:] - diff_vals[:-1]
+    problem_frames = [((frame + 1), phase_stamps[frame + 1]) for (frame, diffval)
+                      in enumerate(diff_diff) if (0 < diffval and diffval < 30)]
 
-    return pz_mat, pz_mat_density
+    pickle_object(problem_frames, pkl_name)
+
+    for bad_frame in problem_frames:
+        for pz_cell in pz_mat[bad_frame[1].phase, :]:
+            cell_frames = [i[0] for i in pz_cell]
+            if bad_frame[0] in cell_frames:
+                pz_cell.pop(cell_frames.index(bad_frame[0]))
+
+    '''
+    Remove bottom 50% of frames
+    '''
+    filt_pz_mat = np.empty(pz_mat.shape, dtype=np.object)
+
+    if percentile_filt:
+        for phi in range(pz_mat.shape[0]):
+            pz_row_matchvals = reduce(
+                lambda x, y: x + y, map(lambda cell: [i[1] for i in cell], pz_mat[phi, :]))
+            pz_median = np.percentile(np.asarray(pz_row_matchvals), percentile)
+            for ind, cell in enumerate(pz_mat[phi, :]):
+                # print cell
+                cell = [i for i in cell if i[1] < pz_median]
+                # print cell
+                # print '-'*80
+                filt_pz_mat[phi, ind] = cell
+                pz_mat_density[phi, ind] = len(cell)
+
+    else:
+        filt_pz_mat = pz_mat
+
+    return filt_pz_mat, pz_mat_density
+
+
+def phi_z_histogram(pz_density):
+    row_filling = np.sum(pz_density, axis=1)
+    plt.figure()
+    plt.plot(row_filling)
+    plt.show(block=False)
+
+    mean_filling = np.mean(row_filling)
+
+    for i in range(len(row_filling)):
+        print i, '->', row_filling[i]
+
+    print 'Threshold at 20%'
+    print np.where(row_filling < 0.2 * mean_filling)
+
+
+def fill_phi_z_row(pz_mat, lut_name='phiz_fill_lut.txt'):
+    '''
+    Fill blank cells in phi z matrix
+    '''
+    with open(os.path.join(setting['workspace'], lut_name)) as fp:
+        raw_lines = fp.readlines()
+
+    fill_lut = {}
+
+    for line in raw_lines:
+        t = line.split(':')
+        fill_lut[int(t[0])] = [int(i) for i in t[1].split(',')]
+
+    for from_row, to_rows in fill_lut.iteritems():
+        filler_row = pz_mat[from_row, :]
+        for to_row in to_rows:
+            print to_row
+            # filled_row = pz_mat[to_row, :]
+            pz_mat[to_row, :] = filler_row
+            # for i in range(pz_mat.shape[1]):
+            #     pz_mat[to_row, i].extend(filler_row[i])
+
+    # pz_density = compute_phi_z_density
+
+    # return pz_mat, pz_density
+    return pz_mat
 
 
 def compile_phase_z_matrix(framelist, z_stamps, phase_stamps, hb_length, pz_mat_pkl_name='phase_z_matrix', pz_density_pkl_name='phase_z_density'):
+    print 'Downsampling by', setting['phiz_downsampling_factor']
+    z_stamps_shifted = z_stamps - np.nanmin(z_stamps)
+    z_stamps_shifted = z_stamps_shifted / setting['phiz_downsampling_factor']
+
     phase_z_matrix = np.empty(
-        (hb_length, int(np.nanmax(z_stamps)) + 1), dtype=np.object)
+        (hb_length, int(np.nanmax(z_stamps_shifted)) + 1), dtype=np.object)
     phase_z_density = np.zeros(phase_z_matrix.shape)
 
     for i in range(hb_length):
-        for j in range(int(np.nanmax(z_stamps)) + 1):
+        for j in range(int(np.nanmax(z_stamps_shifted)) + 1):
             phase_z_matrix[i, j] = list()
 
     phase_stamps = correct_phase_stamp_matchvals(phase_stamps)
 
     for index, frame in enumerate(framelist[:-999]):
-        if np.isnan(z_stamps[frame]):
+        if np.isnan(z_stamps_shifted[frame]):
             continue
-        # print phase_stamps[index].phase, ',', z_stamps[index]
-        phase_z_matrix[phase_stamps[index].phase, int(z_stamps[frame])].append(
+        # print phase_stamps[index].phase, ',', z_stamps_shifted[index]
+        phase_z_matrix[phase_stamps[index].phase, int(z_stamps_shifted[frame])].append(
             (frame, phase_stamps[index].matchval)
         )
-        phase_z_density[phase_stamps[index].phase, int(z_stamps[frame])] += 1
+        phase_z_density[phase_stamps[index].phase,
+                        int(z_stamps_shifted[frame])] += 1
 
     pickle_object(phase_z_matrix, pz_mat_pkl_name)
     pickle_object(phase_z_density, pz_density_pkl_name)
@@ -1271,7 +1396,7 @@ def compile_phase_z_matrix(framelist, z_stamps, phase_stamps, hb_length, pz_mat_
 def get_fluorescent_filename(frame_no):
     name_format = '%%s%%0%dd_%%s.tif' % setting['fm_num_digits']
     ret_name = name_format % (setting['fm_image_prefix'], setting[
-                              'fm_index_start_at'] + frame_no, setting.get('fm_image_suffix', ''))
+        'fm_index_start_at'] + frame_no, setting.get('fm_image_suffix', ''))
     ret_name = ret_name.replace('_.tif', '.tif')
     return ret_name
 
@@ -1282,10 +1407,48 @@ def find_best_frame(phi_z_cell):
     return best_fit
 
 
+def write_final_frame(src, dst, method='copy'):
+    '''
+    valid methods='copy', 'adj_brightness'
+    '''
+    THRESHOLD = 200
+    NORM_POINT = 10000
+
+    if method == 'copy':
+        shutil.copy2(src, dst)
+    elif method == 'adj_brightness':
+        frame = tff.imread(src)
+        frame[np.where(frame > THRESHOLD)] = NORM_POINT / \
+            (np.max(frame)-THRESHOLD)*frame[np.where(frame > THRESHOLD)]
+        tff.imsave(dst, frame.astype('int16'))
+        # tff.imsave(dst, frame)
+    elif method == 'med_adj_brightness':
+        frame = tff.imread(src)
+        frame[np.where(frame > THRESHOLD)] = NORM_POINT / \
+            (np.median(frame)-THRESHOLD)*frame[np.where(frame > THRESHOLD)]
+        tff.imsave(dst, frame.astype('int16'))
+
+
 def write_phase_stamped_fluorescent_images(phi_z_matrix, read_from, write_to):
-    print setting['fm_images']
+    # print setting['fm_images']
     phi_range, z_range = phi_z_matrix.shape
 
+    # TODO: Attempting to change data structure
+    # num_frames = len(os.listdir(setting['fm_images']))
+    # rewrite_lookup = {i: [] for i in range(1, num_frames + 1)}
+
+    # for phase in range(phi_range):
+    #     for z in range(z_range):
+    #         curr_cell = phi_z_matrix[phase, z]
+
+    #         if len(curr_cell) == 0:
+    #             missing_info.append('Final_Z%03d_T%03d.tif' % (z, phase))
+
+    #         best_fit = find_best_frame(curr_cell)
+
+    #         rewrite_lookup[best_fit].append(
+    #             'Final_Z%03d_T%03d.tif' % (z, phase)
+    #         )
     rewrite_lookup = {}
     missing_info = []
 
@@ -1298,7 +1461,7 @@ def write_phase_stamped_fluorescent_images(phi_z_matrix, read_from, write_to):
 
             best_fit = find_best_frame(curr_cell)
 
-            rewrite_lookup[best_fit] = 'Final_Z%03d_T%03d.tif' % (z, phase)
+            rewrite_lookup['Final_Z%03d_T%03d.tif' % (z, phase)] = best_fit
 
     ref_fluorescent_image_path = os.path.join(
         read_from, get_fluorescent_filename(setting['fm_index_start_at']))
@@ -1306,10 +1469,13 @@ def write_phase_stamped_fluorescent_images(phi_z_matrix, read_from, write_to):
     dummy_image = tff.imread(ref_fluorescent_image_path)
     dummy_image = dummy_image * 0
 
-    for frame_no, final_name in rewrite_lookup.iteritems():
+    for final_name, frame_no in rewrite_lookup.iteritems():
+        # TODO: Read and write instead of copy to allow brightness/motion
+        # adjustment
         src = os.path.join(read_from, get_fluorescent_filename(frame_no))
         dst = os.path.join(write_to, final_name)
-        shutil.copy2(src, dst)
+        write_final_frame(src, dst, method='adj_brightness')
+        # shutil.copy2(src, dst)
 
     # Writing dummy images for missing frames
     for missing_frame in missing_info:
@@ -1323,7 +1489,52 @@ def write_phase_stamped_fluorescent_images(phi_z_matrix, read_from, write_to):
     pickle_object(missing_info, 'missing_frame')
 
 
-def write_brother_frames(phi_z_matrix, read_from, write_to, brother_frame_locs):
+def check_fluorescent_bleaching(zooks, read_from):
+    fm_frame_objs = []
+    plt.figure()
+    mean_vals = np.zeros(
+        (len(range(0, len(zooks[0].get_framelist()), 10)), len(zooks[::20])))
+    max_vals = np.zeros(
+        (len(range(0, len(zooks[0].get_framelist()), 10)), len(zooks[::20])))
+    for i, frame in enumerate(range(0, len(zooks[0].get_framelist()), 10)):
+        # mean_vals = []
+        # max_vals = []
+
+        # for zook in zooks[::20]:
+        # for i in range(0,20):
+        #     mean_vals = []
+        #     for frame_no in zook.get_framelist()[i::20]:
+        #         print frame_no, 'loaded'
+        #         fm_frame_objs.append(tff.imread(os.path.join(read_from, get_fluorescent_filename(frame_no))))
+        #         mean_vals.append(np.max(fm_frame_objs[-1]))
+        #     plt.plot(mean_vals)
+        #     print '-'*80
+        # mean_vals = []
+        for j, zook in enumerate(zooks[::20]):
+            # for frame_no in zook.get_framelist():
+            frame_no = zook.get_framelist()[frame]
+            # print frame_no, 'loaded'
+            fm_frame_objs.append(tff.imread(os.path.join(
+                read_from, get_fluorescent_filename(frame_no))))
+            mean_vals[i, j] = np.mean(fm_frame_objs[-1])
+            max_vals[i, j] = np.max(fm_frame_objs[-1])
+            # mean_vals.append(np.mean(fm_frame_objs[-1]))
+            # max_vals.append(np.max(fm_frame_objs[-1]))
+            # mean_vals.append(np.max(fm_frame_objs[-1]))
+        # plt.plot(mean_vals.transpose())
+        # plt.plot(max_vals)
+    # plt.title('Mean vals - separate')
+    # plt.figure()
+    # plt.title('Mean vals - curvefit')
+    # plt.plot(np.mean(mean_vals.transpose(), axis=1))
+    # plt.show()
+
+    # plot_data = []
+    # for frame in fm_frame_objs:
+    #     plot_data.append(np.mean(frame))
+
+
+def write_brother_frames(phi_z_matrix, read_from, write_to, brother_frame_loc_file):
     # setting['brother_frames']
     for (phase, z) in brother_frame_locs:
         curr_cell = phi_z_matrix[phase, z]
@@ -1343,6 +1554,26 @@ def write_brother_frames(phi_z_matrix, read_from, write_to, brother_frame_locs):
             src = os.path.join(read_from, get_fluorescent_filename(frame_no))
             dst = os.path.join(write_to, final_name)
             shutil.copy2(src, dst)
+
+
+def write_pz_density(pz_density, name):
+    filename = os.path.join(setting['workspace'], name)
+    tff.imsave(filename, pz_density)
+
+    max_count = pz_density.max()
+
+    enhanced_pz = np.dstack([np.zeros(pz_density.shape, dtype='uint8')]*3)
+    # enhanced_pz[pz_density==1, 2] = 255
+    for i in range(pz_density.shape[0]):
+        for j in range(pz_density.shape[1]):
+            if pz_density[i, j] == 1:
+                enhanced_pz[i, j, :] = np.array([0, 0, 255])
+            elif pz_density[i, j] > 1:
+                val = (float(pz_density[i, j]) / max_count) * 128
+                enhanced_pz[i, j, :] = np.array([128+val, 255-val, 0])
+
+    filename = os.path.join(setting['workspace'], 'enhanced_'+name)
+    tff.imsave(filename, enhanced_pz.astype('uint8'))
 
 
 def phase_stamping_step():
@@ -1399,6 +1630,48 @@ def phase_stamping_step():
     compile_phase_z_matrix(frame_list, z_stamps, phi_stamps, canon_hb_length)
 
 
+def plot_matrix_rows(matrix, title='', col_sep=1, start_col=None, num_cols=None, row_length=None, legend_key_string='Row'):
+    if start_col is None:
+        start_col = 0
+    if num_cols is None:
+        num_cols = matrix.shape[0] - start_col
+    if row_length is None:
+        row_length = matrix.shape[1]
+
+    disp_mat = matrix[:row_length, start_col:start_col+num_cols:col_sep]
+
+    offset_stack = np.zeros(disp_mat.shape)
+    offset_preval = np.zeros(disp_mat.shape)
+
+    offset_range = (np.max(disp_mat) - np.min(disp_mat)) * 1.5
+    legend_keys = []
+    for i in range(offset_stack.shape[1]):
+        offset_stack[:, i] = (offset_stack.shape[1] - i - 1) * offset_range
+        offset_preval[:5, i] = i * offset_range
+        legend_keys.append('%s %d' %
+                           (legend_key_string, start_col + i*col_sep+1))
+
+    plt.figure()
+    plt.gca().set_prop_cycle(None)
+    plt.plot(disp_mat + offset_stack)
+    plt.title(title+'(Stacked)')
+    plt.legend(legend_keys)
+    plt.gca().set_prop_cycle(None)
+    plt.plot(offset_stack, linestyle='--')
+
+    # plt.get_current_fig_manager().full_screen_toggle()
+    plt.savefig(os.path.join(setting[
+        'workspace'], title+'(Stacked)'+'.svg'), format='svg', dpi=600)
+
+    # plt.figure()
+    # plt.plot(disp_mat + offset_preval)
+    # plt.title(title+'(Superimposed)')
+    # plt.legend(legend_keys)
+
+    # plt.savefig(os.path.join(setting[
+    #                 'workspace'], title+'(Superimposed)'+'.svg'), format='svg', dpi=600)
+
+
 def plot_results(pz_density=None, filtered_pz_density=None, phase_stamps=None, z_stamps=None, diff_matrix=None, diff_matrix_rows=None, canon_hb_stats=None, results='all'):
     if results in ('all', 'phiz'):
         plt.figure()
@@ -1436,25 +1709,30 @@ def plot_results(pz_density=None, filtered_pz_density=None, phase_stamps=None, z
     if results in ('all', 'canon'):
         canon_hb_start = canon_hb_stats[0]
         canon_hb_len = canon_hb_stats[1]
-        canon_diff_mat = diff_matrix[
-            :canon_hb_len * 20, canon_hb_start: canon_hb_start + canon_hb_len: 5]
 
-        offset_stack = np.zeros(canon_diff_mat.shape)
-        offset_preval = np.zeros(canon_diff_mat.shape)
-        for i in range(offset_stack.shape[1]):
-            offset_stack[:, i] = i * 0.1
-            offset_preval[:10, i] = i * 0.1
+        plot_matrix_rows(diff_matrix, 'Canon matrix diff corr',
+                         5, canon_hb_start, canon_hb_len, canon_hb_len*20, )
 
-        plt.figure()
-        plt.plot(canon_diff_mat + offset_stack)
-        plt.title('Canon matrix diff corr-stacked')
-        plt.figure()
-        plt.plot((canon_diff_mat + offset_preval)[:, :11], '-')
-        plt.plot((canon_diff_mat + offset_preval)[:, 11:22], '--')
-        plt.plot((canon_diff_mat + offset_preval)[:, 22:], '-.')
-        plt.title('Canon matrix diff corr-superimposed')
+        # canon_diff_mat = diff_matrix[
+        #     :canon_hb_len * 20, canon_hb_start: canon_hb_start + canon_hb_len: 5]
+
+        # offset_stack = np.zeros(canon_diff_mat.shape)
+        # offset_preval = np.zeros(canon_diff_mat.shape)
+        # for i in range(offset_stack.shape[1]):
+        #     offset_stack[:, i] = i * 0.1
+        #     offset_preval[:10, i] = i * 0.1
+
+        # plt.figure()
+        # plt.plot(canon_diff_mat + offset_stack)
+        # plt.title('Canon matrix diff corr-stacked')
+        # plt.figure()
+        # plt.plot((canon_diff_mat + offset_preval)[:, :11], '-')
+        # plt.plot((canon_diff_mat + offset_preval)[:, 11:22], '--')
+        # plt.plot((canon_diff_mat + offset_preval)[:, 22:], '-.')
+        # plt.title('Canon matrix diff corr-superimposed')
 
     plt.show()
+
 
 if __name__ == '__main__':
     import pickle

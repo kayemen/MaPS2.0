@@ -32,6 +32,14 @@
     "type": "path"
   },
   {
+    "description": "Brother frames",
+    "varname": "brother_frames",
+    "value": "Brother_frames",
+    "helptext": "",
+    "hidden": false,
+    "type": "path"
+  },
+  {
     "description": "Brightfield Images DWT",
     "varname": "bf_images_dwt",
     "value": "Phase_images_DWT",
@@ -59,6 +67,22 @@
     "description": "Stationary Images interpolated DWT",
     "varname": "stat_images_dwt_upsampled",
     "value": "Stationary_images_DWT_upsampled",
+    "helptext": "",
+    "hidden": false,
+    "type": "path"
+  },
+  {
+    "description": "Centralize canonical frames",
+    "varname": "central_zook_canon",
+    "value": "True",
+    "helptext": "",
+    "hidden": false,
+    "type": "path"
+  },
+  {
+    "description": "Canonical heartbeat frames",
+    "varname": "canon_frames",
+    "value": "Canonical_heartbeat_frames",
     "helptext": "",
     "hidden": false,
     "type": "path"
@@ -203,6 +227,14 @@
     "description": "Temporal remapling factor",
     "varname": "time_resampling_factor",
     "value": "4",
+    "helptext": "",
+    "hidden": false,
+    "type": "int"
+  },
+  {
+    "description": "Phi Z downsampling factor",
+    "varname": "phiz_downsampling_factor",
+    "value": "3",
     "helptext": "",
     "hidden": false,
     "type": "int"

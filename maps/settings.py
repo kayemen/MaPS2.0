@@ -144,6 +144,10 @@ def read_setting_from_json(job_name, setting_json_path=os.path.join(BASE_DIR, 'c
         bkup_folder_list = (
             'workspace',
             'canon_frames',
+            'cropped_ref_windows',
+            'canon_frames_valid',
+            'canon_dwt_masked',
+            'final_images'
         )
 
         try:
@@ -176,10 +180,12 @@ def read_setting_from_json(job_name, setting_json_path=os.path.join(BASE_DIR, 'c
                     bkup_name = setting[folder] + '_%s' % last_run
 
             try:
-                shutil.copytree(
+                print setting[folder], '->', bkup_name
+                os.rename(
                     setting[folder],
                     bkup_name
                 )
+                make_or_clear_directory(setting[folder], clear=True)
             except:
                 import traceback
                 traceback.print_exc()

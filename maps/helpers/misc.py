@@ -27,6 +27,8 @@ def unpickle_object(file_name, dumptype='pkl'):
 
     final_path = os.path.join(workspace, file_name)
 
+    print 'Loading "%s"' % final_path
+
     if not final_path.endswith(dumptype):
         final_path = '%s.%s' % (final_path, dumptype)
 
@@ -95,6 +97,14 @@ def write_error_plot(fig, file_name):
     fig.savefig(os.path.join(error_data_dir, file_name))
 
 
+def write_log_data(log_data, label=''):
+    print 'writing %s to %s' % (label, os.path.join(setting['workspace'], 'run_data.txt'))
+    with open(os.path.join(setting['workspace'], 'run_data.txt'), 'a') as fp:
+        data = label + ':' + str(log_data) if label != '' else str(log_data)
+        fp.write(data)
+        fp.write('\n')
+
+
 class LimitedThread(threading.Thread):
     current_threads = []
     current_thread_count = 0
@@ -140,6 +150,7 @@ def zook_approval_function(zooks, z_stamps=None):
             zook.override = True
     print 'Final stats'
     print '%d zooks dropped. %d zooks usable' % (len(zooks.get_bad_zooks()), len(zooks))
+
 
 if __name__ == '__main__':
     pass

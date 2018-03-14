@@ -31,6 +31,25 @@ cdict = {
 }
 plt.register_cmap(name='custom_heatmap', data=cdict)
 
+cdict2 = {
+    'red': [
+        (0.0, 0.0, 0.0),
+        (0.1, 0.5, 0.5),
+        (1.0, 1.0, 1.0)
+    ],
+    'green': [
+        (0.0, 0.0, 0.0),
+        (0.1, 1.0, 1.0),
+        (1.0, 0.5, 0.5)
+    ],
+    'blue': [
+        (0.0, 0.0, 0.0),
+        (0.05, 1.0, 1.0),
+        (0.1, 0.0, 0.0),
+        (1.0, 0.0, 0.0)
+    ]
+}
+plt.register_cmap(name='custom_density', data=cdict2)
 
 cv2_methods = {
     'ccorr_norm': cv2.TM_CCORR_NORMED,
@@ -44,21 +63,37 @@ rect_data = {
     'color': (0, 65535, 0),
     'thickness': 2
 }
+
 freeform_data = {
     'ptarray': [],
     'color': (0, 65535, 0),
     'thickness': 2
 }
 
+brush_data = {
+    'mask': None,
+    'curr_pt': [0, 0],
+    'alpha': 0.8,
+    'color': 2,
+    'brushcolor': (0, 0, 20000),
+    'thickness': 2,
+    'brushsize': 2
+}
+
 selecting = False
+paintOn = False
+paintOff = False
+MAX_BRUSH = 35
 
 
 class GUIException(Exception):
     pass
 
 
-def nothing(arg):
-    pass
+def update_brush(val):
+    global brush_data
+
+    brush_data['brushsize'] = max(0, min(MAX_BRUSH, val))
 
 
 def generate_mask(frame):
@@ -69,6 +104,34 @@ def generate_mask(frame):
 
     # cv2.imshow('mask', mask)
     return mask
+
+
+def brush_select(event, x, y, flags, param):
+    global brush_data, paintOn, paintOff
+
+    curr_mask = brush_data['mask']
+
+    if event == cv2.EVENT_LBUTTONDOWN:
+        cv2.circle(curr_mask, (x, y), brush_data['brushsize'], 65535, -1)
+        paintOn = True
+
+    if event == cv2.EVENT_LBUTTONUP:
+        paintOn = False
+
+    if event == cv2.EVENT_RBUTTONDOWN:
+        cv2.circle(curr_mask, (x, y), brush_data['brushsize'], 0, -1)
+        paintOff = True
+
+    if event == cv2.EVENT_RBUTTONUP:
+        paintOff = False
+
+    if event == cv2.EVENT_MOUSEMOVE:
+        brush_data['curr_pt'][0] = x
+        brush_data['curr_pt'][1] = y
+        if paintOn:
+            cv2.circle(curr_mask, (x, y), brush_data['brushsize'], 65535, -1)
+        if paintOff:
+            cv2.circle(curr_mask, (x, y), brush_data['brushsize'], 0, -1)
 
 
 def freeform_select(event, x, y, flags, param):
@@ -147,6 +210,24 @@ def create_image_overlay(img, overlay_type=None, overlay_data=None, normalize=Tr
             cv2.line(frame, overlay_data['ptarray'][ptindex], overlay_data['ptarray'][
                      (ptindex + 1) % len(overlay_data['ptarray'])], overlay_data['color'], overlay_data['thickness'])
 
+    elif overlay_type == 'brush':
+        # frame = frame.astype('uint16')
+        if overlay_data is None:
+            raise GUIException('Mask data not provided')
+        if set(['mask', 'alpha', 'color']) > set(overlay_data.keys()):
+            raise GUIException('Mask parameters not provided')
+
+        ALPHA = overlay_data['alpha']
+        curr_mask = overlay_data['mask']
+        color = overlay_data['color']
+
+        frame[:, :, color] = (1-ALPHA)*frame[:, :, color] + ALPHA * \
+            curr_mask\
+            + (65535-curr_mask)/65535 * ALPHA * frame[:, :, color]
+
+        cv2.circle(frame, (overlay_data['curr_pt'][0], overlay_data['curr_pt'][1]), overlay_data['brushsize'],
+                   overlay_data['brushcolor'], overlay_data['thickness'])
+
     else:
         raise GUIException('Unknown overlay type - %s' % overlay_type)
 
@@ -214,10 +295,11 @@ def max_heartsize_frame(img_stack, startval=0):
     return ref_frame
 
 
-def masking_window_frame(img_stack, crop_selection=True, mask_selection=False, startval=0):
-    global mask_array
+def masking_window_frame(img_stack, crop_selection=True, mask_selection=False, startval=0, curr_mask=None):
+    global mask_array, brush_data
 
     def draw_crop_frame(img):
+        # print '>>>', np.max(img), np.min(img)
         frame = create_image_overlay(
             img,
             overlay_type='rectangle',
@@ -226,10 +308,13 @@ def masking_window_frame(img_stack, crop_selection=True, mask_selection=False, s
         cv2.imshow('CropFrame', frame)
 
     def draw_mask_frame(img):
+        # print '>>>', np.max(img), np.min(img)
         mask_region = create_image_overlay(
             img,
-            overlay_type='freeform',
-            overlay_data=freeform_data
+            overlay_type='brush',
+            overlay_data=brush_data
+            # overlay_type='freeform',
+            # overlay_data=freeform_data
         )
         cv2.imshow("MaskFrame", mask_region)
 
@@ -237,6 +322,7 @@ def masking_window_frame(img_stack, crop_selection=True, mask_selection=False, s
     if len(img_stack.shape) > 2:
         slider = True
         slider_lim = img_stack.shape[2] - 1
+
     #     img = img_stack[:, :, 0]
     # else:
     #     img = img_stack
@@ -286,35 +372,67 @@ def masking_window_frame(img_stack, crop_selection=True, mask_selection=False, s
 
     if mask_selection:
         cv2.namedWindow("MaskFrame")
-        cv2.setMouseCallback("MaskFrame", freeform_select)
+        cv2.setMouseCallback("MaskFrame", brush_select)
 
         if slider:
             cv2.createTrackbar(
                 'Frame', 'MaskFrame', 0, slider_lim,
                 lambda x: None
             )
+        cv2.createTrackbar(
+            'Brush', 'MaskFrame', brush_data['brushsize'], MAX_BRUSH,
+            update_brush
+        )
 
+        img = crop_region[:, :, cv2.getTrackbarPos(
+            'Frame', 'MaskFrame')] if slider else crop_region
+
+        if curr_mask is None:
+            brush_data['mask'] = np.zeros(img.shape, dtype='uint16')
+        else:
+            brush_data['mask'] = (curr_mask.astype('uint16') / 255)*65535
         while cv2.getWindowProperty('MaskFrame', 0) >= 0:
             img = crop_region[:, :, cv2.getTrackbarPos(
                 'Frame', 'MaskFrame')] if slider else crop_region
+
             draw_mask_frame(img)
             key = cv2.waitKey(1) & 0xFF
-            if key == 13:
+            if key == 13 or key == 27:
                 break
 
-        mask_array = generate_mask(
-            create_image_overlay(
-                img,
-                overlay_type='freeform',
-                overlay_data=freeform_data
-            )
-        )
+            if key == 93:
+                update_brush(brush_data['brushsize']+1)
+                cv2.setTrackbarPos('Brush', 'MaskFrame',
+                                   brush_data['brushsize'])
+            if key == 91:
+                update_brush(brush_data['brushsize']-1)
+                cv2.setTrackbarPos('Brush', 'MaskFrame',
+                                   brush_data['brushsize'])
+
+            if key == 97:
+                cv2.setTrackbarPos('Frame', 'MaskFrame', max(cv2.getTrackbarPos(
+                    'Frame', 'MaskFrame')-1, 0))
+            if key == 100:
+                cv2.setTrackbarPos('Frame', 'MaskFrame', min(cv2.getTrackbarPos(
+                    'Frame', 'MaskFrame')+1, slider_lim))
+
+        # mask_array = generate_mask(
+        #     create_image_overlay(
+        #         img,
+        #         overlay_type='freeform',
+        #         overlay_data=freeform_data
+        #     )
+        # )
+        # mask_array = (brush_data['mask']/255).astype('uint8')
+        mask_array = (brush_data['mask']).astype('uint8')
 
         cv2.namedWindow("mask")
         while cv2.getWindowProperty('mask', 0) >= 0:
             cv2.imshow('mask', mask_array)
             key = cv2.waitKey(1) & 0xFF
             if key == 13:
+                break
+            if key == 27:
                 break
 
         if slider:
@@ -437,17 +555,20 @@ def load_frame(img_path, frame_no, upsample=True, crop=False, cropParams=(), ind
     return img
 
 
-def apply_mask(frame, mask):
+def apply_mask(frame, mask, method='remove_zeros'):
     if not frame.shape == mask.shape:
         raise Exception('Size of frame and mask not matching')
+    if method == 'remove_zeros':
+        return frame[np.where(mask != 0)]
+    elif method == 'keep_zeros':
+        return frame * (mask / np.max(mask))
 
-    return frame[np.where(mask != 0)]
 
-
-def apply_unmask(masked_frame, mask):
-    unmasked_frame = np.zeros(mask.shape).astype(masked_frame.dtype)
-    unmasked_frame[np.where(mask != 0)] = masked_frame
-    return unmasked_frame
+def apply_unmask(masked_frame, mask, method='remove_zeros'):
+    if method == 'remove_zeros':
+        unmasked_frame = np.zeros(mask.shape).astype(masked_frame.dtype)
+        unmasked_frame[np.where(mask != 0)] = masked_frame
+        return unmasked_frame
 
 
 if __name__ == '__main__':

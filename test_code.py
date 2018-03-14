@@ -21,29 +21,23 @@ import os
 import code
 import matplotlib.pyplot as plt
 
-SAVE_WORKSPACE = '-s' in sys.argv
-
-logging.config.dictConfig(logger_config)
-
-job_list = next(os.walk(settings.JOBS_DIR))[1]
+job_list = next(os.walk('./jobs/'))[1]
 
 job_choice = 0
 
-try:
-    job_choice = int(sys.argv[1])
-except:
-    print '\n'.join(
-        map(
-            lambda x, y: '%d-%s' % (x, y),
-            range(1, len(job_list) + 1),
-            job_list
-        )
+print '\n'.join(
+    map(
+        lambda x, y: '%d-%s' % (x, y),
+        range(1, len(job_list) + 1),
+        job_list
     )
+)
 
-    while job_choice not in range(1, len(job_list) + 1):
-        job_choice = int(raw_input('Select job:'))
+while job_choice not in range(1, len(job_list) + 1):
+    job_choice = int(raw_input('Select job:'))
+
 curr_job = job_list[job_choice - 1]
-read_setting_from_json(curr_job, save_bkups=SAVE_WORKSPACE)
+read_setting_from_json(curr_job)
 
 OVERRIDE_SETTINGS = False
 
@@ -115,3 +109,14 @@ for pkl_file in pkl_files:
         loaded_variables.append(pkl_file)
 # Start interactive shell
 code.interact(local=locals())
+# import cv2
+
+
+
+# corr_val_cv_mask
+
+# corr_val_cv_nomask
+
+# corr_val_ip
+
+# corr_val_cv_multmask
