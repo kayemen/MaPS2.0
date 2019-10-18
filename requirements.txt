@@ -28,4 +28,4 @@ pytz==2017.2
 PyWavelets==0.5.2
 requests==2.17.3
 six==1.10.0
-urllib3==1.21.1
+urllib3==1.24.2
